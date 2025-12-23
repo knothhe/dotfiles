@@ -42,6 +42,6 @@
 [includeIf "gitdir:~/Workspace/Github/{{ .userDev }}/"]
 	path = ~/.config/git/config_dev
 {{- if eq .chezmoi.os "darwin" }}
-[includeIf "gitdir:~/Workspace//"]
+[includeIf "gitdir:~/Workspace/Work/"]
 	path = ~/.config/git/config_work
 {{- end }}
