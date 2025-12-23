@@ -49,6 +49,8 @@ cc() {
             export ANTHROPIC_MODEL_PROVIDER="bigmodel"
             export ANTHROPIC_BASE_URL=https://open.bigmodel.cn/api/anthropic
             export ANTHROPIC_AUTH_TOKEN={{ pass "token/bigmodel/anthropic_auth_token" }}
+            export API_TIMEOUT_MS="3000000"
+            export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
             # Auto-select models (commented out to let Claude Code choose)
             # export ANTHROPIC_MODEL=glm-4.5
             # export ANTHROPIC_SMALL_FAST_MODEL=glm-4.5-air
