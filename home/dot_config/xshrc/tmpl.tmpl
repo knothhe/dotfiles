@@ -42,7 +42,6 @@ cc() {
             export ANTHROPIC_MODEL_PROVIDER="anthropic"
             # unset any custom BASE_URL to use Anthropic's default
             unset ANTHROPIC_BASE_URL
-            # Auth token will be set from envs.tmpl via pass template
             claude_args=("$@")
             ;;
         "bigmodel"|"glm"|"big")

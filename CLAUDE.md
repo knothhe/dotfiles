@@ -62,7 +62,7 @@ All scripts source this shared library for consistent UI:
 - ❌ Custom array parsing → ✅ `array_contains()`, `parse_config()`, `read_file_to_array()`
 
 #### Exceptions: Simple Installation Scripts
-**Note**: Platform-specific package installation scripts (`scripts/arch/install_packages.sh`, `scripts/darwin/install_packages.sh`) are intentionally kept simple without `common_functions.sh` dependency to ensure they work reliably in minimal environments. These scripts:
+**Note**: Platform-specific package installation scripts (`scripts/arch/install_pacman.sh`, `scripts/arch/install_yay.sh`, `scripts/darwin/install_packages.sh`) are intentionally kept simple without `common_functions.sh` dependency to ensure they work reliably in minimal environments. These scripts:
 
 - Use basic echo statements for output instead of colored formatting
 - Have minimal dependencies (only require standard shell utilities)
@@ -78,7 +78,7 @@ All scripts source this shared library for consistent UI:
 - **`x_clone`** - Interactive repository cloning tool with branch support
 - **`x_pic`** - Cross-platform clipboard image management and upload tool
 - **`pass_fzf`** - Interactive password selection and generation with fzf integration
-- **`x_sharding`** - Specialized utility for sharding operations
+- **`x_sharding`** - Database table sharding tool for SQL schema transformation
 - **`x_launchagent`** (macOS) - LaunchAgent management utility
 - **`Makefile`** - Build automation for common setup tasks (Chrome extensions, package installation, LazyVim)
 - All use `common_functions.sh` for consistent output and error handling
@@ -109,7 +109,7 @@ proxyinfo
 ### Configuration Files
 - `home/dot_config/xshrc/` - Shell configuration and environment files (modular structure)
   - `rc` - Main shell configuration loader that sources all components
-  - `envs.tmpl` - Environment variables (Claude Code, XDG paths, PATH)
+  - `envs` - Environment variables (Claude Code, XDG paths, PATH)
   - `alias` - Shell aliases for common commands
   - `functions` - Custom shell functions
   - `proxy` - Proxy management functions
@@ -147,7 +147,7 @@ proxyinfo
 ### Build Automation
 - `Makefile` - Root-level build automation with convenient targets for common setup tasks
 - Chrome extension download and management targets
-- Platform-specific package installation (Arch Linux, Flatpak, macOS)
+- Platform-specific package installation (Arch Linux pacman/yay, Flatpak, macOS)
 - Global package installation (PicList via pnpm)
 - Development environment setup (LazyVim installation)
 - System service management (skhd for macOS)
@@ -162,8 +162,9 @@ proxyinfo
   - `install_packages.sh` - Package installation script
   - `darwin.brews`, `darwin.casks` - Package definitions
 - `scripts/arch/` - Arch Linux packages
-  - `install_packages.sh` - Arch package installation
-  - `archlinux.packages`, `archlinux_extra.packages` - Package lists
+  - `install_pacman.sh` - Pacman package installation
+  - `install_yay.sh` - Yay AUR helper installation
+  - `pacman.packages`, `pacman_extra.packages`, `yay.packages` - Package lists
 - `scripts/linux/` - Linux utilities
   - `install_flatpak.sh` - Flatpak installation
   - `add_hypr_source.sh` - Hyprland configuration helper
@@ -241,7 +242,7 @@ proxyinfo
 ## AI Tool Integration
 
 ### Claude Code Configuration
-- Pre-configured in `dot_config/xshrc/envs.tmpl`
+- Pre-configured in `dot_config/xshrc/envs`
 - Supports multiple AI providers (Anthropic, BigModel, Moonshot)
 - Environment variables for API endpoints and model selection
 - Token management via password manager

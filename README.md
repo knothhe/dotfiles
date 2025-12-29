@@ -68,14 +68,18 @@ x_sync         # Master sync orchestrator
 x_clone        # Interactive repo cloning
 x_pic          # Clipboard image management
 pass_fzf       # Interactive password manager
+x_sharding     # Database table sharding tool
 ```
 
 ### Build Automation
 ```bash
 make help                           # List all targets
 make install_lazyvim                # Install LazyVim
-make install_arch_packages          # Install Arch packages
-make download_chrome_extensions     # Download extensions
+make install_pacman_packages        # Install Arch pacman packages
+make install_yay_packages           # Install Arch AUR packages
+make install_flatpak_packages       # Install Flatpak packages
+make install_darwin_packages        # Install macOS packages
+make download_chrome_extensions     # Download Chrome extensions
 ```
 
 ## 🔧 Configuration
@@ -111,10 +115,12 @@ chezmoi add --template ~/.config/xshrc/envs
 
 ## 📋 Key Scripts & Tools
 
-- **`x_pic`**: Cross-platform clipboard image management
+- **`x_pic`**: Cross-platform clipboard image management with format conversion and upload
 - **`pass_fzf`**: Interactive password selection with generation
 - **`x_clone`**: Interactive repository cloning with branch support
+- **`x_sharding`**: Database table sharding tool for SQL schema transformation
 - **`x_sync`**: Master synchronization orchestrator
+- **`x_launchagent`** (macOS): LaunchAgent management utility
 - **`common_functions.sh`**: Shared utility library for all scripts
 
 ## 🔒 Security
