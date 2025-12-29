@@ -1,0 +1,47 @@
+[core]
+	autocrlf = input
+	{{- if eq .chezmoi.os "darwin" }}
+	excludesfile = /Users/knothhe/.config/git/ignore
+	{{- end }}
+[diff]
+	tool = vscode
+[merge]
+    tool = vscode
+[difftool "vscode"]
+    cmd = code --wait --diff $LOCAL $REMOTE
+    trustExitCode = false
+[mergetool "vscode"]
+    cmd = code --wait $MERGED
+    trustExitCode = false
+[user]
+	name = knothhe
+	email = {{ .email }}
+	signingkey = 2D678B61D0335FDA
+[commit]
+	gpgsign = true
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true
+[init]
+	defaultBranch = main
+[tag]
+	gpgSign = true
+[pull]
+	rebase = true
+
+{{- if eq .chezmoi.os "darwin" }}
+[credential]
+	helper = osxkeychain
+{{- else if eq .chezmoi.os "linux" }}
+[credential]
+	helper = libsecret
+{{- end }}
+
+[includeIf "gitdir:~/Workspace/Github/{{ .userDev }}/"]
+	path = ~/.config/git/config_dev
+{{- if eq .chezmoi.os "darwin" }}
+[includeIf "gitdir:~/Workspace//"]
+	path = ~/.config/git/config_work
+{{- end }}

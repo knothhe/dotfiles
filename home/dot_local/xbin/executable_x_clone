@@ -1,0 +1,575 @@
+#!/bin/bash
+
+# Git Repository Cloning Script
+# Function: Clone multiple git repositories with user selection
+# Usage: x_clone [options]
+
+set -e
+
+# Get script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source common functions library
+source "$SCRIPT_DIR/common_functions.sh"
+
+# Repository list format: "name|url|target_directory|branch"
+REPOSITORY_LIST=(
+    "obsidian|git@github.com:knothhe/obsidian.git|~/Workspace/Obsidian|"
+    "guanglai-secrets|git@github.com:knothhe/guanglai-secrets.git|~/Workspace/Github/knothhe/guanglai-secrets"
+    "guanglai-scripts|git@github.com:knothhe/guanglai-scripts.git|~/Workspace/Github/knothhe/guanglai-scripts"
+    "blog-astro|git@github.com:knothhe/blog-astro.git|~/Workspace/Github/knothhe/blog-astro"
+)
+
+# OS-specific repositories
+if is_darwin; then
+    REPOSITORY_LIST+=(
+        "rime|git@github.com:knothhe/rime-ice.git|~/Library/Rime|custom"
+    )
+elif is_linux; then
+    REPOSITORY_LIST+=(
+        "rime|git@github.com:knothhe/rime-ice.git|~/.local/share/fcitx5/rime|custom"
+    )
+fi
+
+# Default target directory
+DEFAULT_TARGET_DIR="$HOME/Workspace/Github"
+
+# Function to display usage
+show_usage() {
+    cat <<EOF
+Usage: $0 [options]
+
+Options:
+    -h, --help          Show this help message
+    -l, --list          List all available repositories
+    -a, --all           Clone all repositories
+    -s, --select        Select specific repositories to clone
+    -t, --target DIR    Specify target directory (default: $DEFAULT_TARGET_DIR)
+    --dry-run           Show what would be cloned without actually cloning
+
+Examples:
+    $0 --list                    # List all repositories
+    $0 --select                  # Select specific repositories
+    $0 --all                     # Clone all repositories
+    $0 --target ~/Projects       # Clone to custom directory
+    $0 --dry-run --all           # Preview what would be cloned
+EOF
+}
+
+# Function to list all repositories
+list_repositories() {
+    print_title "Available Git Repositories"
+
+    local index=1
+    for repo in "${REPOSITORY_LIST[@]}"; do
+        local name=$(echo "$repo" | cut -d'|' -f1)
+        local url=$(echo "$repo" | cut -d'|' -f2)
+        local target=$(echo "$repo" | cut -d'|' -f3)
+        local branch=$(echo "$repo" | cut -d'|' -f4)
+
+        echo -e "${BLUE}${index}.${NC} ${BOLD}$name${NC}"
+        echo -e "   URL: ${CYAN}$url${NC}"
+        echo -e "   Target: ${GREEN}$target${NC}"
+        if [ -n "$branch" ]; then
+            echo -e "   Branch: ${YELLOW}$branch${NC}"
+        fi
+        echo
+        ((index++))
+    done
+}
+
+# Functions expand_path() and check_directory_exists() now provided by common_functions.sh
+
+# Function to clone a single repository
+clone_repository() {
+    local name="$1"
+    local url="$2"
+    local target_dir="$3"
+    local branch="$4"
+    local dry_run="$5"
+
+    local expanded_target=$(expand_path "$target_dir")
+    local parent_dir=$(dirname "$expanded_target")
+
+    if [ "$dry_run" = "true" ]; then
+        if [ -n "$branch" ]; then
+            print_progress "[DRY RUN] Would clone $name (branch: $branch) to $expanded_target"
+        else
+            print_progress "[DRY RUN] Would clone $name to $expanded_target"
+        fi
+        return 0
+    fi
+
+    if [ -n "$branch" ]; then
+        print_progress "Cloning $name (branch: $branch)..."
+    else
+        print_progress "Cloning $name..."
+    fi
+
+    # Create parent directory if it doesn't exist
+    if ! ensure_directory "$parent_dir" >/dev/null; then
+        return 1
+    fi
+
+    # Clone the repository
+    local clone_args=("$url" "$expanded_target")
+    if [ -n "$branch" ]; then
+        clone_args=("-b" "$branch" "$url" "$expanded_target")
+    fi
+
+    if git clone "${clone_args[@]}"; then
+        print_success "Successfully cloned $name"
+        print_info "Repository Location" "$expanded_target"
+        return 0
+    else
+        print_error "Failed to clone $name"
+        return 1
+    fi
+}
+
+# Function to select repositories interactively
+select_repositories() {
+    print_title "Select Repositories to Clone"
+    echo "Enter the numbers of repositories you want to clone (comma-separated):"
+    echo "Example: 1,3,5 or 1-3 or 'all'"
+    echo
+
+    # Show repository list
+    local index=1
+    for repo in "${REPOSITORY_LIST[@]}"; do
+        local name=$(echo "$repo" | cut -d'|' -f1)
+        local url=$(echo "$repo" | cut -d'|' -f2)
+        local branch=$(echo "$repo" | cut -d'|' -f4)
+        if [ -n "$branch" ]; then
+            printf "${BLUE}%2d${NC}. ${BOLD}%-20s${NC} ${CYAN}%s${NC} (${YELLOW}%s${NC})\n" "$index" "$name" "$url" "$branch"
+        else
+            printf "${BLUE}%2d${NC}. ${BOLD}%-20s${NC} ${CYAN}%s${NC}\n" "$index" "$name" "$url"
+        fi
+        ((index++))
+    done
+
+    echo
+    read -p "Your selection: " selection
+
+    # Parse selection
+    local selected_indices=()
+    if [[ "$selection" == "all" ]]; then
+        for ((i = 0; i < ${#REPOSITORY_LIST[@]}; i++)); do
+            selected_indices+=($i)
+        done
+    elif [[ "$selection" == *-* ]]; then
+        # Range selection (e.g., 1-3)
+        local start=$(echo "$selection" | cut -d'-' -f1)
+        local end=$(echo "$selection" | cut -d'-' -f2)
+        for ((i = start - 1; i < end; i++)); do
+            selected_indices+=($i)
+        done
+    else
+        # Individual selection (e.g., 1,3,5)
+        IFS=',' read -ra nums <<<"$selection"
+        for num in "${nums[@]}"; do
+            if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le "${#REPOSITORY_LIST[@]}" ]; then
+                selected_indices+=($((num - 1)))
+            else
+                print_error "Invalid selection: $num"
+                exit 1
+            fi
+        done
+    fi
+
+    echo
+    print_title "Selected Repositories"
+    for index in "${selected_indices[@]}"; do
+        local repo="${REPOSITORY_LIST[$index]}"
+        local name=$(echo "$repo" | cut -d'|' -f1)
+        print_success "$name"
+    done
+
+    echo
+    return "${selected_indices[@]}"
+}
+
+# Interactive menu function
+show_interactive_menu() {
+    while true; do
+        clear
+        print_title "Git Repository Cloning Tool"
+        print_os_info
+
+        echo
+        echo -e "${BOLD}Available options:${NC}"
+        echo -e "${GREEN}1.${NC} List all repositories"
+        echo -e "${GREEN}2.${NC} Clone specific repositories"
+        echo -e "${GREEN}3.${NC} Clone all repositories"
+        echo -e "${GREEN}4.${NC} Add custom repository"
+        echo -e "${GREEN}5.${NC} Change target directory (current: ${CYAN}$DEFAULT_TARGET_DIR${NC})"
+        echo -e "${GREEN}6.${NC} Toggle dry run mode (currently: ${YELLOW}$DRY_RUN_MODE${NC})"
+        echo -e "${RED}0.${NC} Exit"
+        echo
+
+        read -p "Select an option [0-6]: " choice
+
+        case $choice in
+        0)
+            echo
+            print_success "Goodbye!"
+            exit 0
+            ;;
+        1)
+            echo
+            list_repositories
+            read -p "Press Enter to continue..."
+            ;;
+        2)
+            echo
+            clone_selected_repositories
+            read -p "Press Enter to continue..."
+            ;;
+        3)
+            echo
+            clone_all_repositories
+            read -p "Press Enter to continue..."
+            ;;
+        4)
+            echo
+            add_custom_repository
+            read -p "Press Enter to continue..."
+            ;;
+        5)
+            echo
+            change_target_directory
+            read -p "Press Enter to continue..."
+            ;;
+        6)
+            echo
+            toggle_dry_run_mode
+            read -p "Press Enter to continue..."
+            ;;
+        *)
+            print_error "Invalid option. Please try again."
+            sleep 1
+            ;;
+        esac
+    done
+}
+
+# Function to clone selected repositories
+clone_selected_repositories() {
+    print_title "Clone Selected Repositories"
+
+    if [ "$DRY_RUN_MODE" = "true" ]; then
+        print_warning "DRY RUN MODE - No actual cloning will be performed"
+    fi
+
+    # Show repository list with better formatting
+    echo -e "${BOLD}Available repositories:${NC}"
+    echo
+    local index=1
+    for repo in "${REPOSITORY_LIST[@]}"; do
+        local name=$(echo "$repo" | cut -d'|' -f1)
+        local url=$(echo "$repo" | cut -d'|' -f2)
+        local target=$(echo "$repo" | cut -d'|' -f3)
+        local branch=$(echo "$repo" | cut -d'|' -f4)
+
+        printf "${BLUE}%2d${NC}. ${BOLD}%-15s${NC}\n" "$index" "$name"
+        printf "    ${CYAN}URL:${NC} %s\n" "$url"
+        printf "    ${GREEN}Target:${NC} %s\n" "$target"
+        if [ -n "$branch" ]; then
+            printf "    ${YELLOW}Branch:${NC} %s\n" "$branch"
+        fi
+        echo
+        ((index++))
+    done
+
+    echo
+    echo -e "${YELLOW}Selection options:${NC}"
+    echo -e "  • Enter single number (e.g., ${BOLD}1${NC})"
+    echo -e "  • Enter comma-separated numbers (e.g., ${BOLD}1,3,5${NC})"
+    echo -e "  • Enter range (e.g., ${BOLD}1-3${NC})"
+    echo -e "  • Type ${BOLD}all${NC} to select all repositories"
+    echo -e "  • Type ${BOLD}back${NC} to return to main menu"
+    echo
+
+    while true; do
+        read -p "Your selection: " selection
+
+        case "$selection" in
+        "back" | "b" | "0")
+            return
+            ;;
+        "all")
+            local selected_indices=()
+            for ((i = 0; i < ${#REPOSITORY_LIST[@]}; i++)); do
+                selected_indices+=($i)
+            done
+            break
+            ;;
+        *)
+            # Parse selection
+            local selected_indices=()
+            if [[ "$selection" == *-* ]]; then
+                # Range selection
+                local start=$(echo "$selection" | cut -d'-' -f1)
+                local end=$(echo "$selection" | cut -d'-' -f2)
+                for ((i = start - 1; i < end; i++)); do
+                    if [ "$i" -ge 0 ] && [ "$i" -lt "${#REPOSITORY_LIST[@]}" ]; then
+                        selected_indices+=($i)
+                    fi
+                done
+            else
+                # Individual selection
+                IFS=',' read -ra nums <<<"$selection"
+                for num in "${nums[@]}"; do
+                    if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le "${#REPOSITORY_LIST[@]}" ]; then
+                        selected_indices+=($((num - 1)))
+                    else
+                        print_error "Invalid selection: $num"
+                        continue 2
+                    fi
+                done
+            fi
+            break
+            ;;
+        esac
+    done
+
+    if [ ${#selected_indices[@]} -eq 0 ]; then
+        print_warning "No repositories selected"
+        return
+    fi
+
+    echo
+    print_title "Selected Repositories"
+    for index in "${selected_indices[@]}"; do
+        local repo="${REPOSITORY_LIST[$index]}"
+        local name=$(echo "$repo" | cut -d'|' -f1)
+        print_success "$name"
+    done
+
+    echo
+    read -p "Proceed with cloning? [Y/n]: " confirm
+    if [[ "$confirm" =~ ^[Nn]$ ]]; then
+        print_warning "Cloning cancelled"
+        return
+    fi
+
+    # Clone selected repositories
+    local success_count=0
+    local total_count=${#selected_indices[@]}
+
+    echo
+    for index in "${selected_indices[@]}"; do
+        local repo="${REPOSITORY_LIST[$index]}"
+        local name=$(echo "$repo" | cut -d'|' -f1)
+        local url=$(echo "$repo" | cut -d'|' -f2)
+        local target=$(echo "$repo" | cut -d'|' -f3)
+        local branch=$(echo "$repo" | cut -d'|' -f4)
+
+        if clone_repository "$name" "$url" "$target" "$branch" "$DRY_RUN_MODE"; then
+            ((success_count++))
+        fi
+        echo
+    done
+
+    # Show summary
+    if [ "$DRY_RUN_MODE" = "true" ]; then
+        print_title "Dry Run Summary"
+        echo -e "${BLUE}Total selected:${NC} $total_count"
+        echo -e "${YELLOW}Would be cloned:${NC} $success_count"
+    else
+        print_title "Cloning Summary"
+        echo -e "${GREEN}Successfully cloned:${NC} $success_count/$total_count"
+
+        if [ "$success_count" -eq "$total_count" ]; then
+            print_completion
+        else
+            print_failure "Some repositories failed to clone"
+        fi
+    fi
+}
+
+# Function to clone all repositories
+clone_all_repositories() {
+    print_title "Clone All Repositories"
+
+    if [ "$DRY_RUN_MODE" = "true" ]; then
+        print_warning "DRY RUN MODE - No actual cloning will be performed"
+    fi
+
+    echo
+    read -p "Clone all ${#REPOSITORY_LIST[@]} repositories? [Y/n]: " confirm
+    if [[ "$confirm" =~ ^[Nn]$ ]]; then
+        print_warning "Cloning cancelled"
+        return
+    fi
+
+    local success_count=0
+    local total_count=${#REPOSITORY_LIST[@]}
+
+    echo
+    for repo in "${REPOSITORY_LIST[@]}"; do
+        local name=$(echo "$repo" | cut -d'|' -f1)
+        local url=$(echo "$repo" | cut -d'|' -f2)
+        local target=$(echo "$repo" | cut -d'|' -f3)
+        local branch=$(echo "$repo" | cut -d'|' -f4)
+
+        if clone_repository "$name" "$url" "$target" "$branch" "$DRY_RUN_MODE"; then
+            ((success_count++))
+        fi
+        echo
+    done
+
+    # Show summary
+    if [ "$DRY_RUN_MODE" = "true" ]; then
+        print_title "Dry Run Summary"
+        echo -e "${BLUE}Total repositories:${NC} $total_count"
+        echo -e "${YELLOW}Would be cloned:${NC} $success_count"
+    else
+        print_title "Cloning Summary"
+        echo -e "${GREEN}Successfully cloned:${NC} $success_count/$total_count"
+
+        if [ "$success_count" -eq "$total_count" ]; then
+            print_completion
+        else
+            print_failure "Some repositories failed to clone"
+        fi
+    fi
+}
+
+# Function to add custom repository
+add_custom_repository() {
+    print_title "Add Custom Repository"
+
+    echo
+    read -p "Repository name: " name
+    if [ -z "$name" ]; then
+        print_error "Repository name cannot be empty"
+        return
+    fi
+
+    read -p "Repository URL: " url
+    if [ -z "$url" ]; then
+        print_error "Repository URL cannot be empty"
+        return
+    fi
+
+    read -p "Target directory (default: $DEFAULT_TARGET_DIR/$name): " target
+    if [ -z "$target" ]; then
+        target="$DEFAULT_TARGET_DIR/$name"
+    fi
+
+    read -p "Branch (optional, press Enter for default branch): " branch
+    if [ -z "$branch" ]; then
+        branch=""
+    fi
+
+    # Add to repository list
+    REPOSITORY_LIST+=("$name|$url|$target|$branch")
+
+    if [ -n "$branch" ]; then
+        print_success "Repository '$name' added successfully"
+        print_info "Repository Details" "URL: $url | Target: $target | Branch: $branch"
+    else
+        print_success "Repository '$name' added successfully"
+        print_info "Repository Details" "URL: $url | Target: $target"
+    fi
+}
+
+# Function to change target directory
+change_target_directory() {
+    print_title "Change Target Directory"
+
+    echo
+    echo -e "Current target directory: ${CYAN}$DEFAULT_TARGET_DIR${NC}"
+    echo
+
+    read -p "Enter new target directory: " new_target
+    if [ -n "$new_target" ]; then
+        DEFAULT_TARGET_DIR="$new_target"
+        print_success "Target directory changed to: $DEFAULT_TARGET_DIR"
+    else
+        print_warning "Target directory unchanged"
+    fi
+}
+
+# Function to toggle dry run mode
+toggle_dry_run_mode() {
+    print_title "Toggle Dry Run Mode"
+
+    if [ "$DRY_RUN_MODE" = "true" ]; then
+        DRY_RUN_MODE="false"
+        print_success "Dry run mode disabled"
+    else
+        DRY_RUN_MODE="true"
+        print_warning "Dry run mode enabled"
+    fi
+}
+
+# Main function
+main() {
+    # Initialize variables
+    DRY_RUN_MODE="false"
+
+    # Check if command line arguments are provided
+    if [ $# -gt 0 ]; then
+        # Command line mode (for backward compatibility)
+        local action="list"
+        local target_dir="$DEFAULT_TARGET_DIR"
+        local dry_run="false"
+
+        while [[ $# -gt 0 ]]; do
+            case $1 in
+            -h | --help)
+                show_usage
+                exit 0
+                ;;
+            -l | --list)
+                action="list"
+                shift
+                ;;
+            -a | --all)
+                action="all"
+                shift
+                ;;
+            -s | --select)
+                action="select"
+                shift
+                ;;
+            -t | --target)
+                target_dir="$2"
+                shift 2
+                ;;
+            --dry-run)
+                dry_run="true"
+                shift
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                show_usage
+                exit 1
+                ;;
+            esac
+        done
+
+        # Execute in command line mode
+        case "$action" in
+        "list")
+            list_repositories
+            ;;
+        "all")
+            DRY_RUN_MODE="$dry_run"
+            clone_all_repositories
+            ;;
+        "select")
+            DRY_RUN_MODE="$dry_run"
+            clone_selected_repositories
+            ;;
+        esac
+    else
+        # Interactive mode
+        show_interactive_menu
+    fi
+}
+
+# Run main function with all arguments
+main "$@"

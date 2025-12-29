@@ -1,0 +1,81 @@
+# Keybindings for enhanced shell functionality
+
+# Function to copy current command to clipboard
+# Similar to oh-my-zsh sudo plugin but for copying commands
+copy-current-command() {
+    # Get the current command line content
+    local current_command="${BUFFER}"
+
+    # If current command is empty, use the last command from history
+    if [[ -z "$current_command" ]]; then
+        # Get last command, strip numbers, timestamps, and any leading spaces
+        # Works for both ZSH and Bash history formats
+        local last_line
+        if [[ -n "$ZSH_VERSION" ]]; then
+            last_line="$(history -1 | head -n 1)"
+        else
+            last_line="$(history 1)"
+        fi
+
+        # Remove various timestamp and number formats:
+        # - "123: command" (basic history)
+        # - "10/15/2025 17:33 command" (with date/time)
+        # - " 123 command" (with leading spaces)
+        current_command="$(echo "$last_line" | sed 's/^[ ]*[0-9]*[:* ]*//' | sed 's/^[ ]*[0-9]*\/[0-9]*\/[0-9]*[ ]*[0-9]*:[0-9]*[ ]*//' | sed 's/^[ ]*//')"
+    fi
+
+    # Escape the command for safe shell usage and wrap in double quotes
+    local escaped_command
+    if [[ -n "$ZSH_VERSION" ]]; then
+        # Zsh: use parameter expansion for double quoting
+        escaped_command="${(q)current_command}"
+        # If it's single-quoted, convert to double-quoted for better readability
+        if [[ "$escaped_command" == "'"*"'" ]]; then
+            local temp="${escaped_command:1:-1}"
+            temp="${temp//\\/\\\\}"
+            temp="${temp//\"/\\\"}"
+            escaped_command="\"$temp\""
+        fi
+    else
+        # Bash: escape and prefer double quotes
+        escaped_command="${current_command@Q}"
+        # Convert single quotes to double quotes for better readability
+        if [[ "$escaped_command" == "'"*"'" ]]; then
+            local temp="${escaped_command:1:-1}"
+            temp="${temp//\\/\\\\}"
+            temp="${temp//\"/\\\"}"
+            escaped_command="\"$temp\""
+        fi
+    fi
+
+    # Create the copy command: echo "command" | copy
+    local copy_cmd="echo ${escaped_command} | copy"
+
+    # Replace the current buffer with the copy command
+    if [[ -n "$ZSH_VERSION" ]]; then
+        BUFFER="$copy_cmd"
+        # Move cursor to end of line
+        CURSOR=${#BUFFER}
+    else
+        # Bash handling - set READLINE_LINE and READLINE_POINT
+        READLINE_LINE="$copy_cmd"
+        READLINE_POINT=${#READLINE_LINE}
+    fi
+}
+
+
+# Zsh keybindings
+if [[ -n "$ZSH_VERSION" ]]; then
+    # Create zle widgets
+    zle -N copy-current-command
+
+    # Bind ESC+C to copy command (like sudo plugin's ESC behavior)
+    bindkey '\ec' copy-current-command
+fi
+
+# Bash keybindings
+if [[ -n "$BASH_VERSION" ]]; then
+    # Set up bash keybindings using bind command
+    # ESC+C (Meta+c) to copy current command
+    bind -x '"\ec":copy-current-command'
+fi

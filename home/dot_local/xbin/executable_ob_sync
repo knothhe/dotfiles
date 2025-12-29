@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# Obsidian sync command implementation
+# Function: Sync local Obsidian repository to remote, auto-commit uncommitted changes
+
+# Source common functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common_functions.sh"
+
+OBSIDIAN_DIR="$HOME/Workspace/Obsidian"
+
+print_title "Syncing Obsidian Vault"
+
+if git_sync "$OBSIDIAN_DIR" "Obsidian"; then
+    print_completion_conditional
+else
+    print_failure "Obsidian sync"
+    exit 1
+fi

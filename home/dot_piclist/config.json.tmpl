@@ -1,0 +1,47 @@
+{
+  "picBed": {
+    "uploader": "aws-s3-plist",
+    "current": "aws-s3-plist",
+    "smms": {
+      "token": ""
+    },
+    "aws-s3-plist": {
+      "accessKeyID": "{{ pass "token/cloudflare/kn/r2/accessKeyID" }}",
+      "secretAccessKey": "{{ pass "token/cloudflare/kn/r2/secretAccessKey" }}",
+      "bucketName": "images",
+      "uploadPath": "{year}/{month}-{day}-{md5}.{extName}",
+      "region": "apac",
+      "endpoint": "{{ pass "token/cloudflare/kn/r2/endpoint" }}",
+      "proxy": "http://127.0.0.1:7890",
+      "urlPrefix": "https://images-oss.guanglai.me",
+      "options": "",
+      "pathStyleAccess": false,
+      "rejectUnauthorized": false,
+      "acl": "public-read",
+      "disableBucketPrefixToURL": false
+    }
+  },
+  "picgoPlugins": {},
+  "buildIn": {
+    "compress": {
+      "quality": 100,
+      "isConvert": true,
+      "convertFormat": "webp",
+      "isReSize": false,
+      "reSizeWidth": 500,
+      "reSizeHeight": 500,
+      "skipReSizeOfSmallImg": true,
+      "isReSizeByPercent": false,
+      "reSizePercent": 50,
+      "isFlip": false,
+      "isFlop": false,
+      "isRotate": false,
+      "rotateDegree": "0",
+      "isRemoveExif": true
+    },
+    "rename": {
+      "format": "{md5-16}",
+      "enable": false
+    }
+  }
+}

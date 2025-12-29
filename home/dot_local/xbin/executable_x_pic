@@ -1,0 +1,1190 @@
+#!/bin/bash
+
+# x_pic - Cross-platform image management tool with clipboard support, format conversion, and upload capabilities
+# Supports Linux (wl-clipboard) and macOS (pbcopy/pbpaste)
+# Features: save/upload clipboard images, convert between formats (HEIC/PNG/JPG/WebP/AVIF/etc.), auto HEIC→WebP conversion for uploads
+
+set -e
+
+# Source common functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COMMON_FUNCTIONS="$SCRIPT_DIR/common_functions.sh"
+
+if [[ ! -f "$COMMON_FUNCTIONS" ]]; then
+    echo "Error: common_functions.sh not found at $COMMON_FUNCTIONS" >&2
+    exit 1
+fi
+
+source "$COMMON_FUNCTIONS"
+
+# Configuration
+TMP_DIR_LINUX="/tmp/x_pic"
+DEFAULT_MD5_LENGTH=16
+MIN_MD5_LENGTH=8
+MAX_MD5_LENGTH=32
+
+# Get temporary directory
+get_tmp_dir() {
+    echo "$TMP_DIR_LINUX"
+}
+
+# Ensure temporary directory exists
+ensure_tmp_dir() {
+    local tmp_dir=$(get_tmp_dir)
+    if [[ ! -d "$tmp_dir" ]]; then
+        mkdir -p "$tmp_dir"
+        print_success "Created temporary directory: $tmp_dir" >&2
+    fi
+    echo "$tmp_dir"
+}
+
+# Detect if clipboard contains image data
+is_clipboard_image() {
+    if is_linux; then
+        # Check if wl-paste can detect image data
+        if command -v wl-paste >/dev/null 2>&1; then
+            # Try to get MIME type, look for image types
+            local mime_type=$(wl-paste --list-types 2>/dev/null | grep -E "image/(png|jpeg|jpg|gif|webp|tiff|avif)" | head -1)
+            [[ -n "$mime_type" ]]
+        else
+            print_error "wl-paste not found. Please install wl-clipboard."
+            return 1
+        fi
+    elif is_darwin; then
+        # On macOS, check if clipboard has any image data regardless of format
+        if command -v osascript >/dev/null 2>&1; then
+            # Try multiple image formats to see if any work
+            local test_file="/tmp/clipboard_test_$$"
+            local found_image=false
+
+            # Try PNG
+            local result=$(osascript <<EOF
+try
+    set theData to (the clipboard as «class PNGf»)
+    set theFile to open for access "$test_file" with write permission
+    write theData to theFile
+    close access theFile
+    return "success"
+on error
+    try
+        close access "$test_file"
+    end try
+    return "error"
+end try
+EOF
+)
+            if [[ "$result" == "success" ]] && [[ -s "$test_file" ]]; then
+                found_image=true
+            fi
+
+            # Try TIFF if PNG failed
+            if [[ "$found_image" == false ]]; then
+                result=$(osascript <<EOF
+try
+    set theData to (the clipboard as TIFF picture)
+    set theFile to open for access "$test_file" with write permission
+    write theData to theFile
+    close access theFile
+    return "success"
+on error
+    try
+        close access "$test_file"
+    end try
+    return "error"
+end try
+EOF
+)
+                if [[ "$result" == "success" ]] && [[ -s "$test_file" ]]; then
+                    found_image=true
+                fi
+            fi
+
+            # Try generic picture if others failed
+            if [[ "$found_image" == false ]]; then
+                result=$(osascript <<EOF
+try
+    set theData to (the clipboard as picture)
+    set theFile to open for access "$test_file" with write permission
+    write theData to theFile
+    close access theFile
+    return "success"
+on error
+    try
+        close access "$test_file"
+    end try
+    return "error"
+end try
+EOF
+)
+                if [[ "$result" == "success" ]] && [[ -s "$test_file" ]]; then
+                    found_image=true
+                fi
+            fi
+
+            # Clean up test file
+            [[ -f "$test_file" ]] && rm -f "$test_file"
+
+            [[ "$found_image" == true ]]
+        else
+            print_error "osascript not found on macOS"
+            return 1
+        fi
+    else
+        print_error "Unsupported operating system"
+        return 1
+    fi
+}
+
+# Get clipboard image data
+get_clipboard_image() {
+    local output_file="$1"
+
+    if [[ -z "$output_file" ]]; then
+        print_error "Output file path not provided"
+        return 1
+    fi
+
+    if is_linux; then
+        if command -v wl-paste >/dev/null 2>&1; then
+            # Try to save as PNG first, then fallback to other formats
+            if wl-paste --type image/png > "$output_file" 2>/dev/null; then
+                return 0
+            elif wl-paste --type image/jpeg > "$output_file" 2>/dev/null; then
+                return 0
+            elif wl-paste --type image > "$output_file" 2>/dev/null; then
+                return 0
+            else
+                print_error "Failed to extract image from clipboard"
+                return 1
+            fi
+        else
+            print_error "wl-paste not found. Please install wl-clipboard."
+            return 1
+        fi
+    elif is_darwin; then
+        if command -v osascript >/dev/null 2>&1; then
+            # Try to extract any image data from clipboard, regardless of format
+            print_progress "Extracting image from clipboard..."
+
+            # Try PNG first (most common)
+            local result
+            result=$(osascript <<EOF
+try
+    set theData to (the clipboard as «class PNGf»)
+    set theFile to open for access "$output_file" with write permission
+    write theData to theFile
+    close access theFile
+    return "success"
+on error
+    try
+        close access "$output_file"
+    end try
+    return "error"
+end try
+EOF
+)
+
+            if [[ "$result" == "success" ]] && [[ -f "$output_file" ]] && [[ -s "$output_file" ]]; then
+                return 0
+            fi
+
+            # Try TIFF (common on macOS)
+            result=$(osascript <<EOF
+try
+    set theData to (the clipboard as TIFF picture)
+    set theFile to open for access "$output_file" with write permission
+    write theData to theFile
+    close access theFile
+    return "success"
+on error
+    try
+        close access "$output_file"
+    end try
+    return "error"
+end try
+EOF
+)
+
+            if [[ "$result" == "success" ]] && [[ -f "$output_file" ]] && [[ -s "$output_file" ]]; then
+                return 0
+            fi
+
+            # Try generic picture format
+            result=$(osascript <<EOF
+try
+    set theData to (the clipboard as picture)
+    set theFile to open for access "$output_file" with write permission
+    write theData to theFile
+    close access theFile
+    return "success"
+on error
+    try
+        close access "$output_file"
+    end try
+    return "error"
+end try
+EOF
+)
+
+            if [[ "$result" == "success" ]] && [[ -f "$output_file" ]] && [[ -s "$output_file" ]]; then
+                return 0
+            fi
+
+            print_error "Failed to extract image from clipboard"
+            return 1
+        else
+            print_error "osascript not found on macOS"
+            return 1
+        fi
+    else
+        print_error "Unsupported operating system"
+        return 1
+    fi
+}
+
+# Generate MD5 hash with specified length
+generate_md5_name() {
+    local input_file="$1"
+    local length="${2:-$DEFAULT_MD5_LENGTH}"
+
+    # Validate input file
+    if [[ ! -f "$input_file" ]]; then
+        print_error "Input file does not exist: $input_file"
+        return 1
+    fi
+
+    # Validate length
+    if [[ "$length" -lt "$MIN_MD5_LENGTH" ]] || [[ "$length" -gt "$MAX_MD5_LENGTH" ]]; then
+        print_error "MD5 length must be between $MIN_MD5_LENGTH and $MAX_MD5_LENGTH"
+        return 1
+    fi
+
+    # Generate MD5 and truncate to specified length
+    local md5_hash=""
+    if command -v md5sum >/dev/null 2>&1; then
+        md5_hash=$(md5sum "$input_file" 2>/dev/null | cut -d' ' -f1)
+    elif command -v md5 >/dev/null 2>&1; then
+        # Fallback for macOS
+        md5_hash=$(md5 -q "$input_file" 2>/dev/null)
+    else
+        print_error "No MD5 command found (md5sum or md5)"
+        return 1
+    fi
+
+    if [[ -n "$md5_hash" ]]; then
+        echo "${md5_hash:0:$length}"
+    else
+        print_error "Failed to generate MD5 hash for $input_file"
+        return 1
+    fi
+}
+
+# Detect image file extension with format prioritization
+detect_image_extension() {
+    local file="$1"
+
+    # Check file signature to determine extension
+    if [[ -f "$file" ]] && [[ -s "$file" ]]; then
+        local first_bytes=$(xxd -p -l 16 "$file" 2>/dev/null || echo "")
+
+        # PNG: 89 50 4E 47 0D 0A 1A 0A
+        if echo "$first_bytes" | grep -qi "89504e470d0a1a0a"; then
+            echo "png"
+            return
+        fi
+
+        # WebP: 52 49 46 46 ... 57 45 42 50
+        if echo "$first_bytes" | grep -qi "52494646.*57454250"; then
+            echo "webp"
+            return
+        fi
+
+        # JPEG: FF D8 FF
+        if echo "$first_bytes" | grep -qi "ffd8ff"; then
+            echo "jpg"
+            return
+        fi
+
+        # HEIC: ftyp heic (starts with ftyp, contains heic)
+        if echo "$first_bytes" | grep -qi "66747970.*68656963"; then
+            echo "heic"
+            return
+        fi
+
+        # AVIF: ftyp avif (starts with ftyp, contains avif)
+        if echo "$first_bytes" | grep -qi "66747970.*61766966"; then
+            echo "avif"
+            return
+        fi
+
+        # For other formats (TIFF, BMP, GIF, etc.), use file command if available
+        if command -v file >/dev/null 2>&1; then
+            local file_type=$(file -b --mime-type "$file" 2>/dev/null)
+            case "$file_type" in
+                "image/png") echo "png"; return ;;
+                "image/webp") echo "webp"; return ;;
+                "image/jpeg") echo "jpg"; return ;;
+                "image/heic") echo "heic"; return ;;
+                "image/avif") echo "avif"; return ;;
+            esac
+        fi
+
+        # Default priority: PNG > WebP > JPG
+        # For unknown formats, default to PNG as it's most versatile
+        echo "png"
+    else
+        echo "png"
+    fi
+}
+
+# Check if file is HEIC format
+is_heic_file() {
+    local file="$1"
+    local extension=$(detect_image_extension "$file")
+    [[ "$extension" == "heic" ]]
+}
+
+# Check if ImageMagick conversion tools are available
+check_imagemagick_support() {
+    # Check for ImageMagick on all platforms
+    if command -v magick >/dev/null 2>&1; then
+        echo "magick"
+        return 0
+    elif command -v convert >/dev/null 2>&1; then
+        echo "convert"
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Check if file is a supported image format
+is_supported_image() {
+    local file="$1"
+    local extension=$(detect_image_extension "$file")
+    case "$extension" in
+        heic|png|jpg|jpeg|gif|bmp|tiff|webp|avif)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Convert image between formats using ImageMagick
+convert_image_format() {
+    local input_file="$1"
+    local output_format="$2"
+    local output_file="$3"
+
+    if [[ ! -f "$input_file" ]]; then
+        print_error "Input file does not exist: $input_file"
+        return 1
+    fi
+
+    # Validate input format
+    if ! is_supported_image "$input_file"; then
+        local file_ext=$(detect_image_extension "$input_file")
+        print_error "Unsupported input format: $file_ext"
+        print_info "Supported formats" "HEIC, PNG, JPG, GIF, BMP, TIFF, WebP, AVIF"
+        return 1
+    fi
+
+    # Validate output format
+    local output_format_lower=$(echo "$output_format" | tr '[:upper:]' '[:lower:]')
+    case "$output_format_lower" in
+        heic|png|jpg|jpeg|gif|bmp|tiff|webp|avif)
+            # Normalize output format
+            [[ "$output_format_lower" == "jpeg" ]] && output_format_lower="jpg"
+            ;;
+        *)
+            print_error "Unsupported output format: $output_format"
+            print_info "Supported formats" "HEIC, PNG, JPG, GIF, BMP, TIFF, WebP, AVIF"
+            return 1
+            ;;
+    esac
+
+    # Check ImageMagick availability
+    local conversion_tool
+    if ! conversion_tool=$(check_imagemagick_support); then
+        print_error "ImageMagick not found"
+        print_info "macOS" "Install with: brew install imagemagick"
+        print_info "Linux" "Install with: sudo apt install imagemagick"
+        return 1
+    fi
+
+    local input_ext=$(detect_image_extension "$input_file")
+    print_progress "Converting $input_ext to $output_format_lower using ImageMagick..."
+
+    # Prepare output file with correct extension if needed
+    local actual_output_file="$output_file"
+    local actual_output_format="$output_format_lower"
+
+    # Special handling for HEIC output (ImageMagick may need specific format string)
+    if [[ "$actual_output_format" == "heic" ]]; then
+        actual_output_format="heic"
+    elif [[ "$actual_output_format" == "jpg" ]]; then
+        actual_output_format="jpeg"  # ImageMagick uses "jpeg" format name
+    fi
+
+    # Perform conversion using ImageMagick
+    case "$conversion_tool" in
+        "magick")
+            # Use ImageMagick magick command with format specification
+            magick "$input_file" "${actual_output_format}:${actual_output_file}" >/dev/null 2>&1
+            ;;
+        "convert")
+            # Use ImageMagick convert command with format specification
+            convert "$input_file" "${actual_output_format}:${actual_output_file}" >/dev/null 2>&1
+            ;;
+        *)
+            print_error "Unknown conversion tool: $conversion_tool"
+            return 1
+            ;;
+    esac
+
+    # Check if conversion was successful
+    if [[ -f "$actual_output_file" ]] && [[ -s "$actual_output_file" ]]; then
+        return 0
+    else
+        print_error "Failed to convert image from $input_ext to $output_format_lower"
+        return 1
+    fi
+}
+
+
+# Convert image between specified formats
+convert_image() {
+    local input_file="$1"
+    local output_format="$2"
+    local output_file="$3"
+
+    if [[ -z "$input_file" ]]; then
+        print_error "Input file path not provided"
+        return 1
+    fi
+
+    # Set default format to WebP if not specified
+    if [[ -z "$output_format" ]]; then
+        output_format="webp"
+    fi
+
+    print_title "Converting Image"
+    print_info "Input File" "$input_file"
+    print_info "Output Format" "$output_format"
+
+    # Validate input file
+    if [[ ! -f "$input_file" ]]; then
+        print_error "Input file does not exist: $input_file"
+        return 1
+    fi
+
+    if [[ ! -s "$input_file" ]]; then
+        print_error "Input file is empty: $input_file"
+        return 1
+    fi
+
+    # Validate output format
+    local output_format_lower=$(echo "$output_format" | tr '[:upper:]' '[:lower:]')
+    case "$output_format_lower" in
+        heic|png|jpg|jpeg|gif|bmp|tiff|webp|avif)
+            # Normalize output format
+            [[ "$output_format_lower" == "jpeg" ]] && output_format_lower="jpg"
+            ;;
+        *)
+            print_error "Unsupported output format: $output_format"
+            print_info "Supported formats" "HEIC, PNG, JPG, GIF, BMP, TIFF, WebP, AVIF"
+            return 1
+            ;;
+    esac
+
+    # Check if input file is a supported image format
+    if ! is_supported_image "$input_file"; then
+        local file_ext=$(detect_image_extension "$input_file")
+
+        # Check if this is a case where the file extension suggests one format but content is different
+        local input_ext="${input_file##*.}"
+        input_ext=$(echo "$input_ext" | tr '[:upper:]' '[:lower:]')
+
+        if [[ "$input_ext" == "heic" ]] && [[ "$file_ext" != "heic" ]]; then
+            print_error "File has .$input_ext extension but contains $file_ext format data"
+            print_warning "This file may have been previously converted"
+            print_info "Suggestion" "If you need a .$file_ext copy, try: cp '$input_file' '${input_file%.*}.$file_ext'"
+        else
+            print_error "Unsupported input format: $file_ext"
+            print_info "Supported formats" "HEIC, PNG, JPG, GIF, BMP, TIFF, WebP, AVIF"
+        fi
+        return 1
+    fi
+
+    # Determine output file path
+    local final_file
+    if [[ -n "$output_file" ]]; then
+        # Use specified output file
+        final_file="$output_file"
+        # Extract format from output file extension if not specified
+        if [[ -z "$output_format" || "$output_format" == "png" ]]; then
+            local output_ext="${final_file##*.}"
+            output_ext=$(echo "$output_ext" | tr '[:upper:]' '[:lower:]')
+            case "$output_ext" in
+                jpg|jpeg)
+                    output_format_lower="jpg"
+                    ;;
+                png|heic|gif|bmp|tiff|webp|avif)
+                    output_format_lower="$output_ext"
+                    ;;
+            esac
+        fi
+    else
+        # Use same filename as input with new extension, in current directory
+        local input_basename=$(basename "$input_file")
+        input_basename="${input_basename%.*}"  # Remove extension
+        final_file="${input_basename}.${output_format_lower}"
+    fi
+
+    # Perform conversion
+    if ! convert_image_format "$input_file" "$output_format_lower" "$final_file"; then
+        print_error "Failed to convert image"
+        return 1
+    fi
+
+    # Display result
+    echo
+    print_success "Image converted successfully!"
+    print_info "Original File" "$input_file"
+    print_info "Converted File" "$final_file"
+    print_info "File Size" "$(du -h "$final_file" | cut -f1)"
+    print_info "Output Format" "$output_format_lower"
+
+    echo "$final_file"
+}
+
+# copy_to_clipboard() function now provided by common_functions.sh
+
+# Save clipboard image
+save_image() {
+    local md5_length="$1"
+    local tmp_dir
+    tmp_dir=$(ensure_tmp_dir)
+
+    print_title "Saving Clipboard Image"
+    print_info "Temporary Directory" "$tmp_dir"
+
+    # Set default if not provided
+    if [[ -z "$md5_length" ]]; then
+        md5_length="$DEFAULT_MD5_LENGTH"
+    fi
+
+    print_info "MD5 Length" "$md5_length characters"
+
+    # Validate MD5 length parameter
+    if ! [[ "$md5_length" =~ ^[0-9]+$ ]]; then
+        print_error "MD5 length must be a number"
+        return 1
+    fi
+
+    # Check if clipboard contains image
+    print_progress "Checking clipboard content..."
+    if ! is_clipboard_image; then
+        print_error "No image data found in clipboard"
+        return 1
+    fi
+
+    # Create temporary file for the image
+    local temp_file="$tmp_dir/temp_image_$$"
+
+    # Get image from clipboard
+    print_progress "Extracting image from clipboard..."
+    if ! get_clipboard_image "$temp_file"; then
+        print_error "Failed to extract image from clipboard"
+        [[ -f "$temp_file" ]] && rm -f "$temp_file"
+        return 1
+    fi
+
+    # Verify file was created and has content
+    if [[ ! -f "$temp_file" ]] || [[ ! -s "$temp_file" ]]; then
+        print_error "Extracted image file is empty or missing"
+        [[ -f "$temp_file" ]] && rm -f "$temp_file"
+        return 1
+    fi
+
+    # Generate MD5 filename
+    print_progress "Generating filename..."
+    local md5_name
+    md5_name=$(generate_md5_name "$temp_file" "$md5_length")
+    if [[ -z "$md5_name" ]]; then
+        print_error "Failed to generate filename"
+        [[ -f "$temp_file" ]] && rm -f "$temp_file"
+        return 1
+    fi
+
+    # Detect image extension
+    local extension
+    extension=$(detect_image_extension "$temp_file")
+    local final_file="$tmp_dir/${md5_name}.${extension}"
+
+    # Move temp file to final location
+    if ! mv "$temp_file" "$final_file"; then
+        print_error "Failed to save image file"
+        [[ -f "$temp_file" ]] && rm -f "$temp_file"
+        return 1
+    fi
+
+    # Display result
+    echo
+    print_info "Image Saved" "$final_file"
+    print_info "File Size" "$(du -h "$final_file" | cut -f1)"
+    print_info "MD5 Hash" "$md5_name"
+    print_info "Extension" "$extension"
+
+    print_success "Image saved successfully!"
+    echo "$final_file"
+}
+
+# Upload image via picgo
+upload_image() {
+    local input_file="$1"
+    local md5_length="$DEFAULT_MD5_LENGTH"
+
+    if [[ -n "$input_file" ]]; then
+        print_title "Uploading Image File"
+    else
+        print_title "Uploading Clipboard Image"
+    fi
+
+    # Check if picgo is available
+    if ! command -v picgo >/dev/null 2>&1; then
+        print_error "picgo command not found. Please install picgo first."
+        return 1
+    fi
+
+    # Get temporary directory
+    local tmp_dir
+    tmp_dir=$(ensure_tmp_dir)
+
+    local temp_file="$tmp_dir/temp_image_$$"
+
+    if [[ -n "$input_file" ]]; then
+        # Use specified input file
+        print_progress "Using specified image file..."
+        if [[ ! -f "$input_file" ]]; then
+            print_error "Input file does not exist: $input_file"
+            return 1
+        fi
+
+        if [[ ! -s "$input_file" ]]; then
+            print_error "Input file is empty: $input_file"
+            return 1
+        fi
+
+        # Copy input file to temporary location for consistent processing
+        if ! cp "$input_file" "$temp_file"; then
+            print_error "Failed to copy input file: $input_file"
+            return 1
+        fi
+
+        print_info "Input File" "$input_file"
+    else
+        # Use clipboard image (original behavior)
+        print_progress "Checking clipboard content..."
+        if ! is_clipboard_image; then
+            print_error "No image data found in clipboard"
+            return 1
+        fi
+
+        # Get image from clipboard
+        print_progress "Extracting image from clipboard..."
+        if ! get_clipboard_image "$temp_file"; then
+            print_error "Failed to extract image from clipboard"
+            [[ -f "$temp_file" ]] && rm -f "$temp_file"
+            return 1
+        fi
+
+        # Verify file was created and has content
+        if [[ ! -f "$temp_file" ]] || [[ ! -s "$temp_file" ]]; then
+            print_error "Extracted image file is empty or missing"
+            [[ -f "$temp_file" ]] && rm -f "$temp_file"
+            return 1
+        fi
+    fi
+
+    # Check if the file is HEIC format and convert to WebP for better compatibility
+    if is_heic_file "$temp_file"; then
+        print_progress "Converting HEIC to WebP format for upload..."
+        local converted_file="$tmp_dir/temp_converted_$$"
+
+        if convert_image_format "$temp_file" "webp" "$converted_file"; then
+            # Replace the original temp file with the converted version
+            mv "$converted_file" "$temp_file"
+            print_info "Format Conversion" "HEIC → WebP"
+        else
+            print_warning "Failed to convert HEIC to WebP, uploading original format"
+        fi
+    fi
+
+    # Generate MD5 filename
+    print_progress "Generating filename..."
+    local md5_name
+    md5_name=$(generate_md5_name "$temp_file" "$md5_length")
+    if [[ -z "$md5_name" ]]; then
+        print_error "Failed to generate filename"
+        [[ -f "$temp_file" ]] && rm -f "$temp_file"
+        return 1
+    fi
+
+    # Detect image extension
+    local extension
+    extension=$(detect_image_extension "$temp_file")
+    local final_file="$tmp_dir/${md5_name}.${extension}"
+
+    # Move temp file to final location
+    if ! mv "$temp_file" "$final_file"; then
+        print_error "Failed to save image file"
+        [[ -f "$temp_file" ]] && rm -f "$temp_file"
+        return 1
+    fi
+
+    # Display save info
+    print_info "Image Saved" "$final_file"
+    print_info "File Size" "$(du -h "$final_file" | cut -f1)"
+    print_info "MD5 Hash" "$md5_name"
+    print_info "Extension" "$extension"
+
+    echo
+    print_progress "Uploading image via picgo..."
+
+    # Upload using picgo with full path
+    local upload_result
+    if upload_result=$(picgo upload "$final_file" 2>&1); then
+        # Extract URL from picgo output - try multiple patterns
+        local url=""
+
+        # Debug: show raw picgo output for troubleshooting
+        print_info "PicGo Raw Output" "$upload_result"
+
+        # Try different URL extraction patterns - more specific patterns first
+        # Pattern 1: JSON format with full URL
+        url=$(echo "$upload_result" | grep -oE '"url":\s*"https?://[^"]+"[^,]*' | grep -oE 'https?://[^"]+' | head -1)
+
+        if [[ -z "$url" ]]; then
+            # Pattern 2: JSON format with src field
+            url=$(echo "$upload_result" | grep -oE '"src":\s*"https?://[^"]+"[^,]*' | grep -oE 'https?://[^"]+' | head -1)
+        fi
+
+        if [[ -z "$url" ]]; then
+            # Pattern 3: Simple URL extraction - more permissive
+            url=$(echo "$upload_result" | grep -oE 'https?://[a-zA-Z0-9.-]+/[a-zA-Z0-9./_-]+' | head -1)
+        fi
+
+        if [[ -z "$url" ]]; then
+            # Pattern 4: Any HTTP URL in the output
+            url=$(echo "$upload_result" | grep -oE 'https?://[^\s[:cntrl:]]+' | head -1)
+        fi
+
+        if [[ -z "$url" ]]; then
+            # Pattern 5: Look for URL in success message format
+            url=$(echo "$upload_result" | grep -iE "(upload|success|url)" | grep -oE 'https?://[^\s[:cntrl:]]+' | head -1)
+        fi
+
+        if [[ -n "$url" ]]; then
+            # Copy URL to clipboard
+            if copy_to_clipboard "$url"; then
+                print_success "Image uploaded successfully!"
+                print_info "Upload URL" "$url"
+                print_info "Clipboard" "URL copied to clipboard"
+            else
+                print_warning "Image uploaded but failed to copy URL to clipboard"
+                print_info "Upload URL" "$url"
+            fi
+        else
+            print_error "Upload completed but could not extract URL"
+            print_info "PicGo Raw Output" "$upload_result"
+            print_info "Debug Info" "Try checking your picgo configuration and uploader settings"
+            return 1
+        fi
+    else
+        print_error "Failed to upload image via picgo"
+        print_info "PicGo Error Output" "$upload_result"
+        return 1
+    fi
+}
+
+# Parse command line arguments
+parse_args() {
+    local command="$1"
+    shift
+    local md5_length=""
+    local input_file=""
+    local output_format=""
+    local output_file=""
+
+    # Parse options
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --file-name-length|-l)
+                if [[ -n "$2" ]] && [[ "$2" =~ ^[0-9]+$ ]]; then
+                    md5_length="$2"
+                    shift 2
+                else
+                    print_error "Invalid or missing value for --file-name-length/-l option"
+                    echo "Usage: x_pic $command --file-name-length <number>"
+                    return 1
+                fi
+                ;;
+            --input|-i)
+                if [[ -n "$2" ]]; then
+                    input_file="$2"
+                    shift 2
+                else
+                    print_error "Invalid or missing value for --input/-i option"
+                    echo "Usage: x_pic $command --input <file_path>"
+                    return 1
+                fi
+                ;;
+            --format|-f)
+                if [[ -n "$2" ]]; then
+                    local format_lower=$(echo "$2" | tr '[:upper:]' '[:lower:]')
+                    case "$format_lower" in
+                        heic|png|jpg|jpeg|gif|bmp|tiff|webp|avif)
+                            output_format="$format_lower"
+                            [[ "$output_format" == "jpeg" ]] && output_format="jpg"
+                            shift 2
+                            ;;
+                        *)
+                            print_error "Invalid or missing value for --format/-f option"
+                            print_info "Supported formats" "HEIC, PNG, JPG, GIF, BMP, TIFF, WebP, AVIF"
+                            echo "Usage: x_pic $command --format <format>"
+                            return 1
+                            ;;
+                    esac
+                else
+                    print_error "Missing value for --format/-f option"
+                    echo "Usage: x_pic $command --format <format>"
+                    return 1
+                fi
+                ;;
+            --output|-o)
+                if [[ -n "$2" ]]; then
+                    output_file="$2"
+                    shift 2
+                else
+                    print_error "Invalid or missing value for --output/-o option"
+                    echo "Usage: x_pic $command --output <file_path>"
+                    return 1
+                fi
+                ;;
+              -h|--help|help)
+                show_usage
+                exit 0
+                ;;
+            *)
+                # Check if this looks like an option flag (starts with -)
+                if [[ "$1" == -* ]]; then
+                    print_error "Unknown option: $1"
+                else
+                    print_error "Unexpected argument: $1"
+                    # Provide command-specific hints
+                    if [[ "$command" == "save" ]]; then
+                        echo "Hint: Use -l/--file-name-length to set MD5 filename length (optional)"
+                    elif [[ "$command" == "upload" ]]; then
+                        echo "Hint: Use --input/-i to specify a file for upload command"
+                    elif [[ "$command" == "convert" ]]; then
+                        echo "Hint: Use --input/-i to specify HEIC file and --format/-f for output format, --output/-o for output path"
+                    fi
+                fi
+                echo
+                show_usage
+                return 1
+                ;;
+        esac
+    done
+
+    # Validate command-specific options
+    if [[ "$command" == "convert" ]]; then
+        # Convert command requires input file
+        if [[ -z "$input_file" ]]; then
+            print_error "--input/-i option is required for convert command"
+            return 1
+        fi
+        # Output format is optional (defaults to PNG)
+        # Output file is optional (defaults to same name as input with new extension)
+    elif [[ "$command" == "upload" ]]; then
+        # Input file is optional for upload (can use clipboard)
+        if [[ -n "$input_file" ]] && [[ ! -f "$input_file" ]]; then
+            print_error "Input file does not exist: $input_file"
+            return 1
+        fi
+        # Output file is not valid for upload command
+        if [[ -n "$output_file" ]]; then
+            print_error "--output/-o option is only valid with convert command"
+            return 1
+        fi
+    else
+        # For other commands, input file and output file are not valid
+        if [[ -n "$input_file" ]]; then
+            print_error "--input/-i option is only valid with upload command"
+            return 1
+        fi
+        if [[ -n "$output_format" ]]; then
+            print_error "--format/-f option is only valid with convert command"
+            return 1
+        fi
+        if [[ -n "$output_file" ]]; then
+            print_error "--output/-o option is only valid with convert command"
+            return 1
+        fi
+    fi
+
+    # Return command and parameters as space-separated values
+    local result="$command"
+    if [[ -n "$md5_length" ]]; then
+        result="$result $md5_length"
+    fi
+    if [[ -n "$input_file" ]]; then
+        result="$result $input_file"
+    fi
+    if [[ -n "$output_format" ]]; then
+        result="$result $output_format"
+    fi
+    if [[ -n "$output_file" ]]; then
+        result="$result $output_file"
+    fi
+    echo "$result"
+}
+
+# Show usage
+show_usage() {
+    cat << EOF
+x_pic - Cross-platform clipboard image management tool
+
+USAGE:
+    x_pic <command> [options]
+
+COMMANDS:
+    save              Save clipboard image to temporary directory
+    upload            Save and upload clipboard image via picgo
+                      (HEIC files are auto-converted to WebP for compatibility)
+    convert           Convert image between different formats
+
+OPTIONS:
+    -l, --file-name-length <num>  Set MD5 filename length (8-32, default: 16) [save command only]
+    -i, --input <file_path>        Specify image file [upload, convert commands]
+    -f, --format <format>          Output format for conversion [convert command only, default: webp]
+    -o, --output <file_path>       Output file path for conversion [convert command only]
+    -h, --help                    Show this help message
+
+EXAMPLES:
+    x_pic save                                        Save image with 16-character MD5 name
+    x_pic save -l 8                                   Save image with 8-character MD5 name
+    x_pic save --file-name-length 8                   Save image with 8-character MD5 name
+    x_pic upload                                      Upload clipboard image
+    x_pic upload -i ~/path/to/image.png               Upload specific image file
+    x_pic upload --input screenshot.jpg               Upload specific image file
+    x_pic upload -i photo.heic                        Upload HEIC file (auto-converted to WebP)
+    x_pic convert -i photo.heic                        Convert HEIC to WebP in current directory
+    x_pic convert -i photo.heic -f jpg                 Convert HEIC to JPG in current directory
+    x_pic convert -i photo.heic -f png                 Convert HEIC to PNG in current directory
+    x_pic convert -i photo.png -f webp                Convert PNG to WebP in current directory
+    x_pic convert -i image.jpg -f heic                Convert JPG to HEIC in current directory
+    x_pic convert -i photo.heic -f avif                Convert HEIC to AVIF in current directory
+    x_pic convert -i image.avif -f png                Convert AVIF to PNG in current directory
+    x_pic convert -i photo.heic -o /path/to/output.png Convert to specific path with PNG format
+    x_pic convert -i photo.heic -f jpg -o result.jpg   Convert to JPG with custom filename
+    x_pic convert --input image.png --output result.heic  Convert PNG to HEIC with long options
+    x_pic convert --input photo.avif --format webp     Convert AVIF to WebP with long options
+
+REQUIREMENTS:
+    Linux: wl-clipboard (wl-paste, wl-copy), ImageMagick for image conversion
+    macOS: osascript, pbcopy, pbpaste, ImageMagick for image conversion
+    Upload: picgo command must be installed and configured
+
+TEMPORARY DIRECTORY:
+    Linux/macOS: /tmp/x_pic
+
+IMAGE CONVERSION:
+    Converts between various image formats using ImageMagick:
+    - Input formats: HEIC, PNG, JPG, GIF, BMP, TIFF, WebP, AVIF
+    - Output formats: HEIC, PNG, JPG, GIF, BMP, TIFF, WebP, AVIF
+    - Default behavior: Uses same filename as input with new extension, saves in current directory
+    - Custom output: Use --output/-o to specify custom path and filename
+    - Auto-conversion: HEIC files uploaded via 'upload' command are auto-converted to WebP
+EOF
+}
+
+# Main function
+main() {
+    # Validate that common_functions.sh was loaded successfully
+    if ! command -v print_title >/dev/null 2>&1; then
+        echo "Error: Failed to load common_functions.sh" >&2
+        exit 1
+    fi
+
+    # Handle no arguments
+    if [[ $# -eq 0 ]]; then
+        show_usage
+        exit 0
+    fi
+
+    # Check for help arguments anywhere in the command line
+    for arg in "$@"; do
+        if [[ "$arg" == "-h" ]] || [[ "$arg" == "--help" ]] || [[ "$arg" == "help" ]]; then
+            show_usage
+            exit 0
+        fi
+    done
+
+    # Get the command
+    local command="$1"
+
+    # Validate command
+    if [[ "$command" != "save" ]] && [[ "$command" != "upload" ]] && [[ "$command" != "convert" ]]; then
+        print_error "Unknown command: $command"
+        echo
+        show_usage
+        exit 1
+    fi
+
+    # Parse arguments and get command and md5_length
+    local parsed_result
+    parsed_result=$(parse_args "$@" 2>&1) || {
+        # Output the captured error messages and usage info
+        echo "$parsed_result"
+        exit 1
+    }
+
+    # Extract command and all parameters from parsed result
+    local parsed_command=$(echo "$parsed_result" | cut -d' ' -f1)
+    local md5_length=""
+    local input_file=""
+    local output_format=""
+
+    # Check if there are additional arguments
+    if [[ $(echo "$parsed_result" | wc -w) -gt 1 ]]; then
+        local remaining_args=$(echo "$parsed_result" | cut -d' ' -f2-)
+
+        # Parse remaining arguments based on command type
+        if [[ "$parsed_command" == "convert" ]]; then
+            # Convert command: input_file is required, output_format is optional, output_file is optional
+            local first_arg=$(echo "$remaining_args" | cut -d' ' -f1)
+            local second_arg=""
+            local third_arg=""
+
+            # Safely extract second and third arguments if they exist
+            if [[ $(echo "$remaining_args" | wc -w) -ge 2 ]]; then
+                second_arg=$(echo "$remaining_args" | cut -d' ' -f2)
+            fi
+            if [[ $(echo "$remaining_args" | wc -w) -ge 3 ]]; then
+                third_arg=$(echo "$remaining_args" | cut -d' ' -f3)
+            fi
+
+            # Check if first argument is a number (md5_length) or file path
+            if [[ "$first_arg" =~ ^[0-9]+$ ]]; then
+                # First argument is MD5 length (unlikely but possible)
+                md5_length="$first_arg"
+                input_file="$second_arg"
+                # Check if third argument is format or output file
+                if [[ -n "$third_arg" ]]; then
+                    local format_lower=$(echo "$third_arg" | tr '[:upper:]' '[:lower:]')
+                    case "$format_lower" in
+                        heic|png|jpg|jpeg|gif|bmp|tiff|webp|avif)
+                            output_format="$format_lower"
+                            [[ "$output_format" == "jpeg" ]] && output_format="jpg"
+                            ;;
+                        *)
+                            output_file="$third_arg"
+                            ;;
+                    esac
+                fi
+            else
+                # First argument is input file
+                input_file="$first_arg"
+                # Check if second argument is format or output file
+                if [[ -n "$second_arg" ]]; then
+                    local format_lower=$(echo "$second_arg" | tr '[:upper:]' '[:lower:]')
+                    case "$format_lower" in
+                        heic|png|jpg|jpeg|gif|bmp|tiff|webp|avif)
+                            output_format="$format_lower"
+                            [[ "$output_format" == "jpeg" ]] && output_format="jpg"
+                            # Check if third argument is output file or MD5 length
+                            if [[ "$third_arg" =~ ^[0-9]+$ ]]; then
+                                md5_length="$third_arg"
+                            elif [[ -n "$third_arg" ]]; then
+                                output_file="$third_arg"
+                            fi
+                            ;;
+                        *)
+                            # Second argument is not a format, treat as MD5 length
+                            if [[ "$second_arg" =~ ^[0-9]+$ ]]; then
+                                md5_length="$second_arg"
+                            fi
+                            # Check if third argument is output file
+                            if [[ -n "$third_arg" ]]; then
+                                output_file="$third_arg"
+                            fi
+                            ;;
+                    esac
+                fi
+            fi
+
+            # Default to WebP if no format specified
+            if [[ -z "$output_format" ]]; then
+                output_format="webp"
+            fi
+        else
+            # Save and Upload commands: md5_length and/or input_file
+            local first_arg=$(echo "$remaining_args" | cut -d' ' -f1)
+            local second_arg=$(echo "$remaining_args" | cut -d' ' -f2)
+
+            # Check if first argument is a number (md5_length) or file path
+            if [[ "$first_arg" =~ ^[0-9]+$ ]]; then
+                # First argument is MD5 length
+                md5_length="$first_arg"
+                # Check if there's a second argument (input file)
+                if [[ -n "$second_arg" ]]; then
+                    input_file="$second_arg"
+                fi
+            else
+                # First argument is input file (for upload command)
+                input_file="$first_arg"
+                # Check if second argument is MD5 length (unlikely but possible)
+                if [[ "$second_arg" =~ ^[0-9]+$ ]]; then
+                    md5_length="$second_arg"
+                fi
+            fi
+        fi
+    fi
+
+    # Validate MD5 length if provided
+    if [[ -n "$md5_length" ]]; then
+        if ! [[ "$md5_length" =~ ^[0-9]+$ ]]; then
+            print_error "MD5 length must be a number"
+            exit 1
+        fi
+
+        if [[ "$md5_length" -lt "$MIN_MD5_LENGTH" ]] || [[ "$md5_length" -gt "$MAX_MD5_LENGTH" ]]; then
+            print_error "MD5 length must be between $MIN_MD5_LENGTH and $MAX_MD5_LENGTH"
+            exit 1
+        fi
+    fi
+
+    # Execute the appropriate command
+    case "$parsed_command" in
+        "save")
+            save_image "$md5_length"
+            ;;
+        "upload")
+            upload_image "$input_file"
+            ;;
+        "convert")
+            convert_image "$input_file" "$output_format" "$output_file"
+            ;;
+        *)
+            print_error "Internal error: Unknown command $parsed_command"
+            exit 1
+            ;;
+    esac
+}
+
+# Run main function with all arguments
+main "$@"

@@ -1,0 +1,4 @@
+chezmoi-cd() {
+    local chezmoi_dir="${CHEZMOI_WORKING_TREE:-$HOME/.local/share/chezmoi}"
+    cd "$chezmoi_dir"
+}

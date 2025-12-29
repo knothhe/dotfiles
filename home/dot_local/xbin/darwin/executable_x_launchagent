@@ -1,0 +1,813 @@
+#!/bin/bash
+
+# x_launchagent - macOS LaunchAgent Management Tool
+# Provides comprehensive management for LaunchAgents with interactive wizard and CLI options
+
+# Remove set -e to allow graceful directory creation failures
+
+# Get script directory and source common functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../common_functions.sh"
+
+# Configuration
+LAUNCHAGENTS_DIR="$HOME/Library/LaunchAgents"
+TASKS_DIR="$HOME/.local/xbin/tasks"
+LOGS_DIR="$HOME/.local/xbin/logs"
+BACKUP_DIR="$HOME/.local/xbin/backups/launchagents"
+
+# Ensure necessary directories exist (with error handling)
+if [[ ! -d "$TASKS_DIR" ]]; then
+    print_warning "Tasks directory does not exist: $TASKS_DIR"
+fi
+if [[ ! -d "$LOGS_DIR" ]]; then
+    print_warning "Logs directory does not exist: $LOGS_DIR"
+fi
+if [[ ! -d "$BACKUP_DIR" ]]; then
+    print_warning "Backup directory does not exist: $BACKUP_DIR"
+fi
+if [[ ! -d "$LAUNCHAGENTS_DIR" ]]; then
+    mkdir -p "$LAUNCHAGENTS_DIR" || print_error "Cannot create LaunchAgents directory"
+fi
+
+# Get template info
+get_template_info() {
+    local template="$1"
+    case "$template" in
+    "daily-backup")
+        echo "Daily Backup Task|Executes every day at 2:00 AM|StartCalendarInterval"
+        ;;
+    "hourly-sync")
+        echo "Hourly Sync Task|Executes every hour at minute 0|StartCalendarInterval"
+        ;;
+    "weekly-cleanup")
+        echo "Weekly Cleanup Task|Executes every Sunday at 3:00 AM|StartCalendarInterval"
+        ;;
+    "custom-interval")
+        echo "Custom Interval Task|Executes at specified interval in seconds|StartInterval"
+        ;;
+    *)
+        echo ""
+        ;;
+    esac
+}
+
+# Color variables
+BOLD=$(tput bold 2>/dev/null || echo "")
+NC=$(tput sgr0 2>/dev/null || echo "")
+
+# Display usage information
+show_usage() {
+    cat <<EOF
+${BOLD}x_launchagent${NC} - macOS LaunchAgent Management Tool
+
+${BOLD}USAGE:${NC}
+    x_launchagent [COMMAND] [OPTIONS] [ARGUMENTS]
+
+${BOLD}COMMANDS:${NC}
+    ${BOLD}View Operations:${NC}
+    list                    List all LaunchAgents
+    status <name>           Show status of specific LaunchAgent
+    show <name>             Display detailed plist configuration
+    logs <name>             View service logs
+
+    ${BOLD}Creation:${NC}
+    create                  Interactive LaunchAgent creation wizard
+    create --template <name>  Create using predefined template
+    create --script <path>   Create with specified script
+    templates               List available templates
+
+    ${BOLD}Management:${NC}
+    edit <name>             Edit LaunchAgent configuration
+    enable <name>           Load and start LaunchAgent
+    disable <name>          Stop and unload LaunchAgent
+    reload <name>           Reload LaunchAgent configuration
+
+    ${BOLD}Control:${NC}
+    start <name>            Start LaunchAgent service
+    stop <name>             Stop LaunchAgent service
+    restart <name>          Restart LaunchAgent service
+
+    ${BOLD}Removal:${NC}
+    remove <name>           Remove LaunchAgent
+    remove <name> --backup  Remove with backup
+
+    ${BOLD}Utilities:${NC}
+    -h, --help              Show this help message
+
+${BOLD}EXAMPLES:${NC}
+    x_launchagent list                                    # List all LaunchAgents
+    x_launchagent create                                  # Interactive creation wizard
+    x_launchagent create --template daily-backup         # Create using daily backup template
+    x_launchagent create --script ~/script.sh             # Create with specific script
+    x_launchagent status com.user.mytask                  # Check service status
+    x_launchagent start com.user.mytask                   # Start service
+    x_launchagent remove com.user.mytask                  # Remove service
+
+EOF
+}
+
+# Validate that this is running on macOS
+check_macos() {
+    if ! is_darwin; then
+        print_error "This tool is designed for macOS only"
+        exit 1
+    fi
+}
+
+# List all LaunchAgents with their status
+list_launchagents() {
+    print_title "LaunchAgent Services"
+
+    if [[ ! -d "$LAUNCHAGENTS_DIR" ]] || [[ -z "$(ls -A "$LAUNCHAGENTS_DIR" 2>/dev/null)" ]]; then
+        print_warning "No LaunchAgents found in $LAUNCHAGENTS_DIR"
+        return 0
+    fi
+
+    local count=0
+    for plist_file in "$LAUNCHAGENTS_DIR"/*.plist; do
+        [[ -f "$plist_file" ]] || continue
+
+        local filename=$(basename "$plist_file")
+        local label=$(plutil -extract Label raw "$plist_file" 2>/dev/null || echo "Unknown")
+        local status=$(get_launchagent_status "$label")
+
+        printf "${BLUE}%-3d${NC} ${CYAN}%-30s${NC} ${GREEN}%-10s${NC} %s\n" \
+            $((++count)) "$filename" "$status" "$label"
+    done
+
+    echo
+    # print_completion "Found $count LaunchAgent(s)"
+}
+
+# Get LaunchAgent status
+get_launchagent_status() {
+    local label="$1"
+    local job_info
+
+    if job_info=$(launchctl list "$label" 2>/dev/null); then
+        local pid=$(echo "$job_info" | awk '{print $1}')
+        local status=$(echo "$job_info" | awk '{print $2}')
+
+        if [[ "$pid" =~ ^[0-9]+$ ]] && [[ "$pid" -gt 0 ]]; then
+            echo "Running"
+        elif [[ "$status" == "-" ]]; then
+            echo "Loaded"
+        else
+            echo "Stopped"
+        fi
+    else
+        echo "Not Loaded"
+    fi
+}
+
+# Show detailed LaunchAgent information
+show_launchagent() {
+    local label="$1"
+    local plist_file="$LAUNCHAGENTS_DIR/${label}.plist"
+
+    if [[ ! -f "$plist_file" ]]; then
+        print_error "LaunchAgent not found: $label"
+        return 1
+    fi
+
+    print_title "LaunchAgent Details: $label"
+
+    # Basic information
+    print_header "Basic Information"
+    echo "Label: $(plutil -extract Label raw "$plist_file" 2>/dev/null || echo "N/A")"
+    echo "Status: $(get_launchagent_status "$label")"
+    echo "File: $plist_file"
+    echo
+
+    # Program configuration
+    print_header "Program Configuration"
+    local program_args=$(plutil -p "$plist_file" 2>/dev/null | sed -n '/ProgramArguments/,/^  \}/p' | grep "^[[:space:]]*[0-9]" | awk -F '=> ' '{print $2}' | tr -d '"' | tr '\n' ' ')
+    echo "Program: $program_args"
+
+    local working_dir=$(plutil -extract WorkingDirectory raw "$plist_file" 2>/dev/null || echo "Default")
+    echo "Working Directory: $working_dir"
+    echo
+
+    # Schedule configuration
+    print_header "Schedule Configuration"
+    if plutil -extract StartInterval raw "$plist_file" >/dev/null 2>&1; then
+        local interval=$(plutil -extract StartInterval raw "$plist_file" 2>/dev/null)
+        echo "Interval: Every $interval seconds"
+    elif plutil -extract StartCalendarInterval raw "$plist_file" >/dev/null 2>&1; then
+        echo "Calendar Schedule:"
+        plutil -p "$plist_file" | grep -A 10 "StartCalendarInterval" | grep -E "(Minute|Hour|Day|Weekday|Month)" | while read line; do
+            echo "  $line"
+        done
+    elif plutil -extract RunAtLoad raw "$plist_file" >/dev/null 2>&1; then
+        local run_at_load=$(plutil -extract RunAtLoad raw "$plist_file" 2>/dev/null)
+        echo "Run at Load: $run_at_load"
+    else
+        echo "No schedule specified"
+    fi
+    echo
+
+    # Log paths
+    print_header "Log Configuration"
+    local stdout_path=$(plutil -extract StandardOutPath raw "$plist_file" 2>/dev/null || echo "Not specified")
+    local stderr_path=$(plutil -extract StandardErrorPath raw "$plist_file" 2>/dev/null || echo "Not specified")
+    echo "Standard Output: $stdout_path"
+    echo "Standard Error: $stderr_path"
+    echo
+}
+
+# View LaunchAgent logs
+view_logs() {
+    local label="$1"
+    local plist_file="$LAUNCHAGENTS_DIR/${label}.plist"
+
+    if [[ ! -f "$plist_file" ]]; then
+        print_error "LaunchAgent not found: $label"
+        return 1
+    fi
+
+    # Get log paths from plist
+    local stdout_path=$(plutil -extract StandardOutPath raw "$plist_file" 2>/dev/null)
+    local stderr_path=$(plutil -extract StandardErrorPath raw "$plist_file" 2>/dev/null)
+
+    print_title "Logs for: $label"
+
+    # Show available log files
+    local log_files=()
+    [[ -n "$stdout_path" && -f "$stdout_path" ]] && log_files+=("STDOUT:$stdout_path")
+    [[ -n "$stderr_path" && -f "$stderr_path" ]] && log_files+=("STDERR:$stderr_path")
+
+    # Also check default log locations
+    local default_log="$LOGS_DIR/${label}.log"
+    [[ -f "$default_log" ]] && log_files+=("DEFAULT:$default_log")
+
+    if [[ ${#log_files[@]} -eq 0 ]]; then
+        print_warning "No log files found for $label"
+        return 1
+    fi
+
+    # Display log file options
+    for i in "${!log_files[@]}"; do
+        local type="${log_files[$i]%%:*}"
+        local path="${log_files[$i]#*:}"
+        printf "${BLUE}%-2d${NC} ${CYAN}%-8s${NC} %s\n" $((i + 1)) "$type" "$path"
+    done
+
+    echo
+    echo "Enter log file number to view (or 'q' to quit):"
+    read -r choice
+
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [[ "$choice" -ge 1 ]] && [[ "$choice" -le ${#log_files[@]} ]]; then
+        local selected="${log_files[$((choice - 1))]#*:}"
+        print_header "Viewing: $selected"
+        tail -f "$selected" 2>/dev/null || {
+            print_error "Cannot follow log file. Displaying last 50 lines:"
+            tail -50 "$selected" 2>/dev/null || print_error "Cannot read log file"
+        }
+    elif [[ "$choice" != "q" ]]; then
+        print_error "Invalid selection"
+    fi
+}
+
+# Create LaunchAgent wizard
+create_launchagent() {
+    local script_path="$1"
+    local template="$2"
+
+    print_title "LaunchAgent Creation Wizard"
+
+    # Get service name
+    local service_name
+    if [[ -n "$template" ]]; then
+        local template_info="$(get_template_info "$template")"
+        local template_desc=$(echo "$template_info" | cut -d'|' -f2)
+        print_highlight "Using template: $template"
+        print_highlight "Description: $template_desc"
+        echo
+        service_name=$(prompt_input "Enter service name (format: com.username.taskname): " "com.$(whoami).$(echo "$template" | sed 's/-/_/g')")
+    else
+        service_name=$(prompt_input "Enter service name (format: com.username.taskname): " "com.$(whoami).custom-task")
+    fi
+
+    # Validate service name format (reverse domain notation with at least 2 segments)
+    if ! [[ "$service_name" =~ ^[a-zA-Z0-9-]+\.[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)*$ ]]; then
+        print_error "Invalid service name format. Use reverse domain notation like: com.username.taskname"
+        print_error "Format: domain.segment[.more.segments...] (at least 2 segments required)"
+        print_error "Allowed characters: letters, numbers, hyphens, underscores"
+        return 1
+    fi
+
+    # Get script path
+    if [[ -z "$script_path" ]]; then
+        script_path=$(prompt_input "Enter script file path: " "")
+    fi
+
+    # Expand path and validate
+    script_path=$(expand_path "$script_path")
+    if [[ ! -f "$script_path" ]]; then
+        print_error "Script file not found: $script_path"
+        return 1
+    fi
+
+    if [[ ! -x "$script_path" ]]; then
+        print_warning "Script is not executable. Setting execute permission..."
+        chmod +x "$script_path"
+    fi
+
+    # Get description
+    local description=$(prompt_input "Enter task description: " "Custom task created by x_launchagent")
+
+    # Get schedule configuration
+    local schedule_type
+    if [[ -n "$template" ]]; then
+        local template_info="$(get_template_info "$template")"
+        schedule_type=$(echo "$template_info" | cut -d'|' -f3)
+        print_success "Using schedule type: $schedule_type"
+    else
+        echo
+        print_header "Schedule Configuration"
+        echo "1. Interval (every N seconds)"
+        echo "2. Calendar (specific time)"
+        echo "3. Run at load (once when loaded)"
+        echo
+        schedule_type=$(prompt_input "Select schedule type [1-3]: " "1")
+
+        case "$schedule_type" in
+        1) schedule_type="StartInterval" ;;
+        2) schedule_type="StartCalendarInterval" ;;
+        3) schedule_type="RunAtLoad" ;;
+        *) schedule_type="StartInterval" ;;
+        esac
+    fi
+
+    # Configure schedule based on type
+    local schedule_config=""
+    case "$schedule_type" in
+    "StartInterval")
+        if [[ -n "$template" ]]; then
+            case "$template" in
+            "hourly-sync") interval=3600 ;;      # 1 hour
+            "daily-backup") interval=86400 ;;    # 24 hours
+            "weekly-cleanup") interval=604800 ;; # 7 days
+            *) interval=300 ;;                   # 5 minutes default
+            esac
+        else
+            interval=$(prompt_input "Enter interval in seconds: " "300")
+        fi
+        schedule_config="<key>StartInterval</key><integer>$interval</integer>"
+        ;;
+    "StartCalendarInterval")
+        if [[ -n "$template" ]]; then
+            case "$template" in
+            "daily-backup")
+                schedule_config='<key>StartCalendarInterval</key><dict><key>Hour</key><integer>2</integer><key>Minute</key><integer>0</integer></dict>'
+                ;;
+            "weekly-cleanup")
+                schedule_config='<key>StartCalendarInterval</key><dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>0</integer><key>Weekday</key><integer>0</integer></dict>'
+                ;;
+            *)
+                schedule_config='<key>StartCalendarInterval</key><dict><key>Minute</key><integer>0</integer></dict>'
+                ;;
+            esac
+        else
+            echo "Enter calendar schedule (leave blank for default):"
+            local minute=$(prompt_input "Minute (0-59): " "0")
+            local hour=$(prompt_input "Hour (0-23): " "2")
+            local day=$(prompt_input "Day (1-31, blank for any): " "")
+            local month=$(prompt_input "Month (1-12, blank for any): " "")
+            local weekday=$(prompt_input "Weekday (0-7, 0/7=Sunday, blank for any):" "")
+
+            schedule_config="<key>StartCalendarInterval</key><dict>"
+            [[ -n "$minute" ]] && schedule_config+="<key>Minute</key><integer>$minute</integer>"
+            [[ -n "$hour" ]] && schedule_config+="<key>Hour</key><integer>$hour</integer>"
+            [[ -n "$day" ]] && schedule_config+="<key>Day</key><integer>$day</integer>"
+            [[ -n "$month" ]] && schedule_config+="<key>Month</key><integer>$month</integer>"
+            [[ -n "$weekday" ]] && schedule_config+="<key>Weekday</key><integer>$weekday</integer>"
+            schedule_config+="</dict>"
+        fi
+        ;;
+    "RunAtLoad")
+        schedule_config="<key>RunAtLoad</key><true/>"
+        ;;
+    esac
+
+    # Get working directory
+    local working_dir
+    if [[ -n "$template" ]]; then
+        working_dir="$(dirname "$script_path")"
+    else
+        working_dir=$(prompt_input "Enter working directory (default: script directory): " "$(dirname "$script_path")")
+    fi
+
+    # Configure logging
+    echo
+    print_header "Log Configuration"
+    local enable_logging=$(prompt_input "Enable logging? [Y/n]: " "y")
+    local stdout_path=""
+    local stderr_path=""
+
+    if [[ "$enable_logging" =~ ^[Yy] ]]; then
+        local log_base="$LOGS_DIR/$(basename "$service_name")"
+        stdout_path="${log_base}.out.log"
+        stderr_path="${log_base}.err.log"
+        print_success "Logs will be saved to: $log_base.*.log"
+    fi
+
+    # Confirm creation
+    echo
+    print_header "LaunchAgent Configuration Summary"
+    echo "Label: $service_name"
+    echo "Script: $script_path"
+    echo "Description: $description"
+    echo "Working Directory: $working_dir"
+    echo "Schedule: $schedule_type"
+    [[ -n "$interval" ]] && echo "Interval: $interval seconds"
+    [[ -n "$stdout_path" ]] && echo "Output Log: $stdout_path"
+    [[ -n "$stderr_path" ]] && echo "Error Log: $stderr_path"
+    echo
+
+    if ! confirm_action "Create this LaunchAgent?"; then
+        print_warning "Creation cancelled"
+        return 1
+    fi
+
+    # Generate plist file
+    local plist_file="$LAUNCHAGENTS_DIR/${service_name}.plist"
+    generate_plist "$service_name" "$script_path" "$description" "$working_dir" "$schedule_config" "$stdout_path" "$stderr_path" >"$plist_file"
+
+    print_success "LaunchAgent created: $plist_file"
+
+    # Ask if user wants to load and start immediately
+    if confirm_action "Load and start the LaunchAgent now?"; then
+        load_launchagent "$service_name"
+    fi
+
+    # print_completion "LaunchAgent creation completed"
+}
+
+# Generate plist content
+generate_plist() {
+    local label="$1"
+    local script_path="$2"
+    local description="$3"
+    local working_dir="$4"
+    local schedule_config="$5"
+    local stdout_path="$6"
+    local stderr_path="$7"
+
+    cat <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>$label</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>$script_path</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>$working_dir</string>
+
+    $schedule_config
+
+    <key>StandardOutPath</key>
+    <string>$stdout_path</string>
+
+    <key>StandardErrorPath</key>
+    <string>$stderr_path</string>
+</dict>
+</plist>
+EOF
+}
+
+# Load LaunchAgent
+load_launchagent() {
+    local label="$1"
+    local plist_file="$LAUNCHAGENTS_DIR/${label}.plist"
+
+    if [[ ! -f "$plist_file" ]]; then
+        print_error "LaunchAgent file not found: $plist_file"
+        return 1
+    fi
+
+    print_progress "Loading LaunchAgent: $label"
+
+    if launchctl load "$plist_file" 2>/dev/null; then
+        print_success "LaunchAgent loaded successfully: $label"
+        # Start if RunAtLoad is true
+        if plutil -extract RunAtLoad raw "$plist_file" >/dev/null 2>&1; then
+            sleep 1
+            print_success "LaunchAgent started: $label"
+        fi
+    else
+        print_error "Failed to load LaunchAgent: $label"
+        return 1
+    fi
+}
+
+# Unload LaunchAgent
+unload_launchagent() {
+    local label="$1"
+
+    print_progress "Unloading LaunchAgent: $label"
+
+    if launchctl unload "$label" 2>/dev/null; then
+        print_success "LaunchAgent unloaded successfully: $label"
+    else
+        print_warning "LaunchAgent was not loaded or unloading failed: $label"
+    fi
+}
+
+# Start LaunchAgent
+start_launchagent() {
+    local label="$1"
+
+    print_progress "Starting LaunchAgent: $label"
+
+    if launchctl start "$label" 2>/dev/null; then
+        print_success "LaunchAgent started successfully: $label"
+    else
+        print_error "Failed to start LaunchAgent: $label"
+        return 1
+    fi
+}
+
+# Stop LaunchAgent
+stop_launchagent() {
+    local label="$1"
+
+    print_progress "Stopping LaunchAgent: $label"
+
+    if launchctl stop "$label" 2>/dev/null; then
+        print_success "LaunchAgent stopped successfully: $label"
+    else
+        print_error "Failed to stop LaunchAgent: $label"
+        return 1
+    fi
+}
+
+# Restart LaunchAgent
+restart_launchagent() {
+    local label="$1"
+
+    print_progress "Restarting LaunchAgent: $label"
+
+    stop_launchagent "$label"
+    sleep 1
+    start_launchagent "$label"
+}
+
+# Enable LaunchAgent (load and start)
+enable_launchagent() {
+    local label="$1"
+
+    print_title "Enabling LaunchAgent: $label"
+    load_launchagent "$label"
+    start_launchagent "$label"
+}
+
+# Disable LaunchAgent (stop and unload)
+disable_launchagent() {
+    local label="$1"
+
+    print_title "Disabling LaunchAgent: $label"
+    stop_launchagent "$label"
+    unload_launchagent "$label"
+}
+
+# Edit LaunchAgent configuration
+edit_launchagent() {
+    local label="$1"
+    local plist_file="$LAUNCHAGENTS_DIR/${label}.plist"
+
+    if [[ ! -f "$plist_file" ]]; then
+        print_error "LaunchAgent not found: $label"
+        return 1
+    fi
+
+    print_title "Editing LaunchAgent: $label"
+    print_highlight "Opening editor for: $plist_file"
+    echo "Note: After editing, you'll need to reload the service."
+    echo
+
+    # Use default editor or vi if not set
+    local editor="${EDITOR:-vi}"
+    "$editor" "$plist_file"
+
+    # Ask if user wants to reload
+    if confirm_action "Reload the LaunchAgent to apply changes?"; then
+        disable_launchagent "$label"
+        sleep 1
+        enable_launchagent "$label"
+    fi
+}
+
+# Remove LaunchAgent
+remove_launchagent() {
+    local label="$1"
+    local create_backup="$2"
+    local plist_file="$LAUNCHAGENTS_DIR/${label}.plist"
+
+    if [[ ! -f "$plist_file" ]]; then
+        print_error "LaunchAgent not found: $label"
+        return 1
+    fi
+
+    print_title "Removing LaunchAgent: $label"
+
+    # Show current status
+    local status=$(get_launchagent_status "$label")
+    echo "Current status: $status"
+    echo
+
+    # Create backup if requested
+    if [[ "$create_backup" == "true" ]]; then
+        local backup_file="$BACKUP_DIR/${label}.plist.$(date +%Y%m%d_%H%M%S)"
+        cp "$plist_file" "$backup_file"
+        print_success "Backup created: $backup_file"
+    fi
+
+    # Stop and unload first
+    if [[ "$status" != "Not Loaded" ]]; then
+        disable_launchagent "$label"
+    fi
+
+    # Remove the file
+    if rm "$plist_file" 2>/dev/null; then
+        print_success "LaunchAgent removed successfully: $label"
+    else
+        print_error "Failed to remove LaunchAgent file: $plist_file"
+        return 1
+    fi
+
+    # print_completion "LaunchAgent removal completed"
+}
+
+# List available templates
+list_templates() {
+    print_title "Available Templates"
+
+    local count=0
+    for template in "daily-backup" "hourly-sync" "weekly-cleanup" "custom-interval"; do
+        local info="$(get_template_info "$template")"
+        local name=$(echo "$info" | cut -d'|' -f1)
+        local desc=$(echo "$info" | cut -d'|' -f2)
+
+        printf "${BLUE}%-3d${NC} ${CYAN}%-20s${NC} %s\n" \
+            $((++count)) "$template" "$desc"
+    done
+
+    echo
+    print_header "Usage Examples:"
+    echo "x_launchagent create --template daily-backup --script ~/backup.sh"
+    echo "x_launchagent create --template hourly-sync --script ~/sync.sh"
+}
+
+# Main function
+main() {
+    # Check if running on macOS
+    check_macos
+
+    # Parse command line arguments
+    case "${1:-}" in
+    "" | -h | --help)
+        show_usage
+        ;;
+    list)
+        list_launchagents
+        ;;
+    status)
+        if [[ -z "${2:-}" ]]; then
+            print_error "Please specify a LaunchAgent name"
+            exit 1
+        fi
+        get_launchagent_status "$2"
+        ;;
+    show)
+        if [[ -z "${2:-}" ]]; then
+            print_error "Please specify a LaunchAgent name"
+            exit 1
+        fi
+        show_launchagent "$2"
+        ;;
+    logs)
+        if [[ -z "${2:-}" ]]; then
+            print_error "Please specify a LaunchAgent name"
+            exit 1
+        fi
+        view_logs "$2"
+        ;;
+    create)
+        case "${2:-}" in
+        --template)
+            if [[ -z "${3:-}" ]]; then
+                print_error "Please specify a template name"
+                echo "Available templates:"
+                list_templates
+                exit 1
+            fi
+            if [[ -z "$(get_template_info "$3")" ]]; then
+                print_error "Unknown template: $3"
+                echo "Available templates:"
+                list_templates
+                exit 1
+            fi
+            create_launchagent "" "$3"
+            ;;
+        --script)
+            if [[ -z "${3:-}" ]]; then
+                print_error "Please specify a script path"
+                exit 1
+            fi
+            create_launchagent "$3"
+            ;;
+        "")
+            create_launchagent
+            ;;
+        *)
+            print_error "Unknown option: $2"
+            echo "Use 'create --template <name>' or 'create --script <path>'"
+            exit 1
+            ;;
+        esac
+        ;;
+    templates)
+        list_templates
+        ;;
+    edit)
+        if [[ -z "${2:-}" ]]; then
+            print_error "Please specify a LaunchAgent name"
+            exit 1
+        fi
+        edit_launchagent "$2"
+        ;;
+    enable)
+        if [[ -z "${2:-}" ]]; then
+            print_error "Please specify a LaunchAgent name"
+            exit 1
+        fi
+        enable_launchagent "$2"
+        ;;
+    disable)
+        if [[ -z "${2:-}" ]]; then
+            print_error "Please specify a LaunchAgent name"
+            exit 1
+        fi
+        disable_launchagent "$2"
+        ;;
+    reload)
+        if [[ -z "${2:-}" ]]; then
+            print_error "Please specify a LaunchAgent name"
+            exit 1
+        fi
+        print_title "Reloading LaunchAgent: $2"
+        disable_launchagent "$2"
+        sleep 1
+        enable_launchagent "$2"
+        ;;
+    start)
+        if [[ -z "${2:-}" ]]; then
+            print_error "Please specify a LaunchAgent name"
+            exit 1
+        fi
+        start_launchagent "$2"
+        ;;
+    stop)
+        if [[ -z "${2:-}" ]]; then
+            print_error "Please specify a LaunchAgent name"
+            exit 1
+        fi
+        stop_launchagent "$2"
+        ;;
+    restart)
+        if [[ -z "${2:-}" ]]; then
+            print_error "Please specify a LaunchAgent name"
+            exit 1
+        fi
+        restart_launchagent "$2"
+        ;;
+    remove)
+        if [[ -z "${2:-}" ]]; then
+            print_error "Please specify a LaunchAgent name"
+            exit 1
+        fi
+        local create_backup="false"
+        if [[ "$3" == "--backup" ]]; then
+            create_backup="true"
+        fi
+        remove_launchagent "$2" "$create_backup"
+        ;;
+    *)
+        print_error "Unknown command: $1"
+        echo
+        show_usage
+        exit 1
+        ;;
+    esac
+}
+
+# Run main function with all arguments
+main "$@"
+

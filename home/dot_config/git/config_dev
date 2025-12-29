@@ -1,0 +1,8 @@
+[user]
+	name = {{ .userDev }}
+	email = {{ .emailDev }}
+	signingkey = null
+[commit]
+	gpgsign = false
+[tag]
+	gpgSign = false

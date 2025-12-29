@@ -1,0 +1,52 @@
+#!/bin/bash
+
+set -e
+
+# Get script directory and source common functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common_functions.sh"
+
+# Set environment variable to suppress individual completion messages
+export SUPPRESS_COMPLETION_MESSAGES=1
+
+# List of sync operations - use full paths for LaunchAgent compatibility
+sync_operations=(
+    "1. Syncing password store:$SCRIPT_DIR/pass_sync"
+    "2. Syncing Obsidian vault:$SCRIPT_DIR/ob_sync"
+    "3. Syncing Rime input method:$SCRIPT_DIR/rime_sync"
+)
+
+# Common function: Execute sync operation and display results (using improved common function)
+run_sync() {
+    local sync_name="$1"
+    local sync_command="$2"
+
+    print_progress "$sync_name..."
+
+    if "$sync_command"; then
+        print_success "$sync_name completed successfully"
+        return 0
+    else
+        print_error "$sync_name failed"
+        return 1
+    fi
+}
+
+# Display start information
+print_title "Starting sync operations"
+
+# Execute all sync operations
+for operation in "${sync_operations[@]}"; do
+    name="${operation%%:*}"
+    command="${operation#*:}"
+
+    if ! run_sync "$name" "$command"; then
+        print_failure "$name"
+        exit 1
+    fi
+    echo
+done
+
+# Display completion information
+print_completion
+

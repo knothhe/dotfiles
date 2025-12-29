@@ -1,0 +1,13 @@
+# Time the passphrase is kept in cache after each invocation of GnuPG
+default-cache-ttl 60
+
+# Time before the cache is wiped
+max-cache-ttl 60
+
+# Allow filling the passphrase directly in terminal instead of GUI
+allow-loopback-pinentry
+
+# ~/.gnupg/gpg-agent.conf
+{{- if eq .chezmoi.os "darwin" }}
+pinentry-program /opt/homebrew/bin/pinentry-mac
+{{- end }}

@@ -1,0 +1,19 @@
+{{- if eq .chezmoi.os "darwin" -}}
+{
+  "defaultIM": "com.apple.keylayout.ABC",
+  "obtainCmd": "/opt/homebrew/bin/macism",
+  "switchCmd": "/opt/homebrew/bin/macism {im}",
+  "windowsDefaultIM": "",
+  "windowsObtainCmd": "",
+  "windowsSwitchCmd": ""
+}
+{{- else if eq .chezmoi.os "linux" -}}
+{
+  "defaultIM": "keyboard-us",
+  "obtainCmd": "/usr/bin/fcitx5-remote -n",
+  "switchCmd": "/usr/bin/fcitx5-remote -s {im}",
+  "windowsDefaultIM": "",
+  "windowsObtainCmd": "",
+  "windowsSwitchCmd": ""
+}
+{{- end -}}

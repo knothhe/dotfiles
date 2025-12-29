@@ -1,0 +1,86 @@
+# Set default proxy address here to avoid prompt.
+# Example: THE_PROXY="127.0.0.1:7890"
+export THE_PROXY="127.0.0.1:7890"
+
+# --- Helper Function: Show Usage ---
+_show_proxy_usage() {
+  echo "CLI Proxy Manager"
+  echo "================"
+  echo "This tool sets/unsets proxy for command-line applications."
+  echo ""
+  echo "Prerequisites: 'jq' is recommended for better 'proxyinfo' output."
+  echo ""
+  echo "Usage:"
+  echo "  source ${BASH_SOURCE[0]}        # Source this script first"
+  echo "  proxyon [host:port] [user:pass] # Activate proxy for CLI tools"
+  echo "  proxyoff                         # Deactivate proxy"
+  echo "  proxyinfo                        # Show current proxy status"
+  echo ""
+  echo "Environment Variable:"
+  echo "  Set 'THE_PROXY' in your shell config (e.g., ~/.bashrc) to default."
+}
+
+# --- Activate Proxy Function ---
+proxyon() {
+  # Get proxy from args, or env var, or prompt user
+  local proxy_host_port="${1:-$THE_PROXY}"
+  if [[ -z "$proxy_host_port" ]]; then
+    echo "Enter proxy address (e.g., 127.0.0.1:7890):"
+    read -r proxy_host_port
+  fi
+  if [[ -z "$proxy_host_port" ]]; then
+    echo "Error: No proxy address provided."
+    return 1
+  fi
+
+  # Construct proxy URL, with optional auth
+  local auth_string=""
+  if [[ -n "$2" ]]; then
+    auth_string="${2}@"
+  fi
+  local proxy_url="http://${auth_string}${proxy_host_port}"
+
+  # 1. Set environment variables for command-line tools
+  export http_proxy="${proxy_url}"
+  export https_proxy="${proxy_url}"
+  export ftp_proxy="${proxy_url}"
+  export rsync_proxy="${proxy_url}"
+  export HTTP_PROXY="${proxy_url}"
+  export HTTPS_PROXY="${proxy_url}"
+  export FTP_PROXY="${proxy_url}"
+  export RSYNC_PROXY="${proxy_url}"
+  export ALL_PROXY="${proxy_url}"
+  export NO_PROXY="localhost,127.0.0.1,*.local"
+
+  echo "✅ Proxy activated for CLI tools."
+  echo "   Address: ${proxy_host_port}"
+  echo "   Run 'proxyinfo' to see details."
+}
+
+# --- Deactivate Proxy Function ---
+proxyoff() {
+  # 1. Unset environment variables
+  unset http_proxy
+  unset https_proxy
+  unset ftp_proxy
+  unset rsync_proxy
+  unset HTTP_PROXY
+  unset HTTPS_PROXY
+  unset RSYNC_PROXY
+  unset ftp_proxy
+  unset ALL_PROXY
+  unset NO_PROXY
+
+  echo "✅ Proxy deactivated for CLI tools."
+}
+
+# --- Show Proxy Status Function ---
+proxyinfo() {
+  echo "------------------ Environment Variables ------------------"
+  printf "%-20s: %s\n" "HTTP_PROXY" "${http_proxy:-"Not set"}"
+  printf "%-20s: %s\n" "HTTPS_PROXY" "${https_proxy:-"Not set"}"
+  printf "%-20s: %s\n" "FTP_PROXY" "${ftp_proxy:-"Not set"}"
+  printf "%-20s: %s\n" "ALL_PROXY" "${ALL_PROXY:-"Not set"}"
+  printf "%-20s: %s\n" "NO_PROXY" "${NO_PROXY:-"Not set"}"
+
+}

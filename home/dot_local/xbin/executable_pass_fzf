@@ -1,0 +1,1425 @@
+#!/bin/bash
+
+# pass_fzf - Interactive password selection with fzf
+# Uses fzf to search password store and copies selected password to clipboard
+
+set -e
+
+# Source common functions for consistent UI
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common_functions.sh"
+
+# ============================================================================
+# CONSTANTS AND CONFIGURATION
+# ============================================================================
+
+readonly SCRIPT_VERSION="2.0.0"
+readonly DEFAULT_PASSWORD_LENGTH=16
+readonly MIN_PASSWORD_LENGTH=8
+readonly MAX_PASSWORD_LENGTH=64
+readonly CLIPBOARD_CLEAR_TIME=45
+readonly CREATE_NEW_ENTRY_MARKER="<Create New Password Entry>"
+readonly TEMP_FILE_PREFIX="pass_fzf"
+
+# Password store configuration
+readonly PASSWORD_STORE_DIR="${PASSWORD_STORE_DIR:-$HOME/.password-store}"
+
+# Check dependencies
+check_script_dependencies() {
+    if ! check_dependencies pass fzf fd pwgen; then
+        print_error "Please install missing dependencies"
+        print_info "macOS" "brew install pass fzf fd pwgen"
+        print_info "Ubuntu/Debian" "sudo apt install pass fzf fd pwgen"
+        safe_exit 1
+    fi
+}
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+# wait_for_user(), safe_exit(), create_temp_file(), and confirm_action() functions now provided by common_functions.sh
+
+# Trim leading and trailing whitespace from string
+trim_whitespace() {
+    local str="$1"
+    # Remove leading and trailing whitespace
+    str="${str#"${str%%[![:space:]]*}"}"   # Remove leading whitespace
+    str="${str%"${str##*[![:space:]]}"}"   # Remove trailing whitespace
+    echo "$str"
+}
+
+# Entry name validation with reasonable rules
+validate_entry_name() {
+    local entry_name="$1"
+
+    # Allow alphanumeric, /, ., _, -, @ characters
+    # Prevent path traversal and command injection
+    if [[ ! "$entry_name" =~ ^[a-zA-Z0-9/\._@-]+$ ]]; then
+        print_error "Entry name contains invalid characters"
+        print_info "Allowed" "Letters, numbers, /, ., _, -, @"
+        print_info "Examples" "websites/github.com, email/personal, work/company@domain.com, test"
+        return 1
+    fi
+
+    # Prevent obvious path traversal attempts
+    if [[ "$entry_name" =~ \.\. ]] || [[ "$entry_name" =~ ^/ ]] || [[ "$entry_name" =~ /$ ]]; then
+        print_error "Invalid entry name format"
+        print_info "Rules" "No '../', no leading or trailing '/'"
+        return 1
+    fi
+
+    if [[ ${#entry_name} -gt 255 ]]; then
+        print_error "Entry name too long (max 255 characters)"
+        return 1
+    fi
+
+    if [[ ${#entry_name} -eq 0 ]]; then
+        print_error "Entry name cannot be empty"
+        return 1
+    fi
+
+    return 0
+}
+
+# Check if password entry exists
+entry_exists() {
+    local entry="$1"
+    local full_path="${PASSWORD_STORE_DIR}/${entry}.gpg"
+    [[ -f "$full_path" ]]
+}
+
+# Get password entries with optimized single command
+get_password_entries() {
+    fd -e gpg . "$PASSWORD_STORE_DIR" 2>/dev/null | \
+        sed "s|${PASSWORD_STORE_DIR}/||; s|\.gpg$||" | \
+        sort
+}
+
+# ============================================================================
+# CONFIGURATION FUNCTIONS
+# ============================================================================
+
+get_default_length() {
+    echo "${PASS_DEFAULT_LENGTH:-$DEFAULT_PASSWORD_LENGTH}"
+}
+
+get_default_symbols() {
+    echo "${PASS_DEFAULT_SYMBOLS:-true}"
+}
+
+show_password_generation_menu() {
+    local entry="$1"
+    local is_update="$2"
+
+    print_title "Password Generation Options"
+
+    # Cache default values to avoid repeated calls
+    local default_length
+    local default_symbols
+    default_length=$(get_default_length)
+    default_symbols=$(get_default_symbols)
+
+    if [ "$is_update" = "true" ]; then
+        echo -e "${BLUE}┌${NC} ${BOLD}Entry${NC}"
+        echo -e "${BLUE}└${NC} ${CYAN}$entry${NC} (already exists - will be updated)"
+        echo
+    else
+        echo -e "${BLUE}┌${NC} ${BOLD}Entry${NC}"
+        echo -e "${BLUE}└${NC} ${CYAN}$entry${NC} (new entry will be created)"
+        echo
+    fi
+
+    local symbols_status="No"
+    [ "$default_symbols" = "true" ] && symbols_status="Yes"
+
+    echo -e "${BLUE}┌${NC} ${BOLD}Current defaults${NC}"
+    echo -e "${BLUE}└${NC} Length: ${YELLOW}$default_length${NC} | Symbols: ${YELLOW}$symbols_status${NC}"
+    echo
+    echo -e "${GREEN}Select password generation options:${NC}"
+    echo
+    echo -e "1) With symbols, $default_length chars ${YELLOW}[default]${NC}"
+    echo -e "2) No symbols, $default_length chars"
+    echo -e "3) Custom length with symbols"
+    echo -e "4) Custom length without symbols"
+    echo -e "5) Fully custom options"
+    echo -e "6) ${RED}Cancel${NC}"
+    echo
+}
+
+confirm_password_update() {
+    local entry="$1"
+
+    echo -e "${YELLOW}⚠${NC} ${BOLD}Entry already exists${NC}"
+    echo -e "${BLUE}┌${NC} Entry name"
+    echo -e "${BLUE}└${NC} ${CYAN}$entry${NC}"
+    echo
+
+    confirm_action "Do you want to update it with a new password?" "n"
+}
+
+prompt_for_length() {
+    local default="$1"
+    local min="${2:-$MIN_PASSWORD_LENGTH}"
+    local max="${3:-$MAX_PASSWORD_LENGTH}"
+
+    while true; do
+        echo -e "${BLUE}Enter password length (${CYAN}$min-$max${NC}) or press Enter for default ${YELLOW}$default${NC}:" >&2
+        read -r length_input
+
+        if [ -z "$length_input" ]; then
+            echo "$default"
+            return 0
+        fi
+
+        if [[ "$length_input" =~ ^[0-9]+$ ]] && [ "$length_input" -ge "$min" ] && [ "$length_input" -le "$max" ]; then
+            echo "$length_input"
+            return 0
+        else
+            print_error "Please enter a number between $min and $max"
+        fi
+    done
+}
+
+
+generate_password_with_options() {
+    local entry="$1"
+    local length="$2"
+    local include_symbols="$3"
+    local is_update="$4"
+    local include_numbers="${5:-true}"
+    local include_uppercase="${6:-true}"
+    local include_lowercase="${7:-true}"
+
+    local pass_args=()
+
+    # Check if this is a non-standard character class combination
+    local is_standard=true
+
+    # Standard pass behavior includes all character classes
+    if [ "$include_lowercase" = "false" ] || [ "$include_uppercase" = "false" ] || [ "$include_numbers" = "false" ]; then
+        is_standard=false
+    fi
+
+    # If it's not a standard combination, we need to handle it differently
+    if [ "$is_standard" = "false" ]; then
+        print_error "❌ Custom character class selection not supported by standard pass"
+        echo
+        echo -e "${YELLOW}The standard 'pass' tool only supports two password types:${NC}"
+        echo -e "${BLUE}• With symbols:${NC} lowercase + uppercase + numbers + symbols"
+        echo -e "${BLUE}• No symbols:${NC} lowercase + uppercase + numbers"
+        echo
+        echo -e "${RED}Your custom settings:${NC}"
+        [ "$include_lowercase" = "false" ] && echo -e "${RED}• Missing lowercase letters${NC}"
+        [ "$include_uppercase" = "false" ] && echo -e "${RED}• Missing uppercase letters${NC}"
+        [ "$include_numbers" = "false" ] && echo -e "${RED}• Missing numbers${NC}"
+        echo
+        echo -e "${CYAN}💡 Recommendation:${NC} Use option 1 (all character types) or option 2 (no symbols only)"
+        echo
+
+        if confirm_action "Generate password with standard settings instead?" "y"; then
+            # Fall back to standard options based on symbols preference
+            # Use default character classes for standard pass behavior
+            generate_password_with_options "$entry" "$length" "$include_symbols" "$is_update" "true" "true" "true"
+            return $?
+        else
+            print_warning "Password generation cancelled due to unsupported character combination"
+            return 1
+        fi
+    fi
+
+    # Use standard pass options
+    if [ "$include_symbols" = "false" ]; then
+        pass_args+=(--no-symbols)
+    fi
+
+    # Add in-place flag for updates, otherwise force for new entries
+    if [ "$is_update" = "true" ]; then
+        pass_args+=(--in-place)
+    else
+        pass_args+=(--force)
+    fi
+
+    # Add clip to copy to clipboard
+    pass_args+=(--clip)
+
+    local action_text="Creating new password entry"
+    [ "$is_update" = "true" ] && action_text="Updating existing password entry"
+
+    # Build configuration string for display
+    local config_parts=()
+    config_parts+=("Length: $length")
+    [ "$include_lowercase" = "true" ] && config_parts+=("lowercase")
+    [ "$include_uppercase" = "true" ] && config_parts+=("uppercase")
+    [ "$include_numbers" = "true" ] && config_parts+=("numbers")
+    [ "$include_symbols" = "true" ] && config_parts+=("symbols")
+
+    print_progress "$action_text for: $entry"
+    print_info "Configuration" "$(IFS=', '; echo "${config_parts[*]}")"
+
+    if pass generate "${pass_args[@]}" "$entry" "$length" >/dev/null 2>&1; then
+        echo
+        echo -e "${GREEN}✓${NC} ${BOLD}$action_text successful!${NC}"
+        echo -e "${BLUE}└${NC} Entry: ${CYAN}$entry${NC} | Auto-clear in ${YELLOW}${CLIPBOARD_CLEAR_TIME}s${NC}"
+        echo
+        return 0
+    else
+        print_error "Failed to generate password for: $entry"
+        return 1
+    fi
+}
+
+# Generate password using pwgen with custom character classes
+generate_custom_password_with_pwgen() {
+    local entry="$1"
+    local length="$2"
+    local include_symbols="$3"
+    local is_update="$4"
+    local include_numbers="$5"
+    local include_uppercase="$6"
+    local include_lowercase="$7"
+
+    local pwgen_args=("-1")  # Generate one password
+
+    # Build pwgen options based on character class preferences
+    if [ "$include_lowercase" = "true" ] && [ "$include_uppercase" = "true" ] && [ "$include_numbers" = "true" ] && [ "$include_symbols" = "true" ]; then
+        # All character classes
+        pwgen_args+=("-y")  # Include symbols
+    elif [ "$include_lowercase" = "true" ] && [ "$include_uppercase" = "true" ] && [ "$include_numbers" = "true" ] && [ "$include_symbols" = "false" ]; then
+        # No symbols (default pwgen behavior)
+        :
+    elif [ "$include_lowercase" = "true" ] && [ "$include_uppercase" = "false" ] && [ "$include_numbers" = "false" ] && [ "$include_symbols" = "false" ]; then
+        # Only lowercase
+        pwgen_args+=("-A")  # No capital letters
+        pwgen_args+=("-0")  # No numbers
+    elif [ "$include_lowercase" = "false" ] && [ "$include_uppercase" = "true" ] && [ "$include_numbers" = "false" ] && [ "$include_symbols" = "false" ]; then
+        # Only uppercase
+        pwgen_args+=("-A")  # No capital letters (we'll manually convert)
+        pwgen_args+=("-0")  # No numbers
+    elif [ "$include_lowercase" = "false" ] && [ "$include_uppercase" = "false" ] && [ "$include_numbers" = "true" ] && [ "$include_symbols" = "false" ]; then
+        # Only numbers
+        pwgen_args+=("-A")  # No capital letters
+        pwgen_args+=("-0")  # No numbers
+        # We'll generate a numeric password manually
+    elif [ "$include_lowercase" = "false" ] && [ "$include_uppercase" = "false" ] && [ "$include_numbers" = "false" ] && [ "$include_symbols" = "true" ]; then
+        # Only symbols
+        print_error "pwgen cannot generate passwords with only symbols"
+        print_info "Recommendation" "Include at least one alphanumeric character class"
+        return 1
+    else
+        # Mixed combinations - we need to handle manually
+        local char_classes=""
+        [ "$include_lowercase" = "true" ] && char_classes="${char_classes}a-z"
+        [ "$include_uppercase" = "true" ] && char_classes="${char_classes}A-Z"
+        [ "$include_numbers" = "true" ] && char_classes="${char_classes}0-9"
+        [ "$include_symbols" = "true" ] && char_classes="${char_classes}!@#$%^&*()_+-=[]{}|;:,.<>?"
+
+        print_progress "Generating custom password with mixed character classes"
+        local generated_password
+        generated_password=$(generate_password_from_char_classes "$length" "$char_classes")
+
+        if [ -n "$generated_password" ]; then
+            # Insert password into pass store
+            local temp_file
+            temp_file=$(create_temp_file)
+            echo "$generated_password" > "$temp_file"
+
+            if [ "$is_update" = "true" ]; then
+                # For updates, we need to preserve additional content
+                local existing_content
+                existing_content=$(pass show "$entry" 2>/dev/null | tail -n +2)
+                {
+                    echo "$generated_password"
+                    [ -n "$existing_content" ] && echo "$existing_content"
+                } > "$temp_file"
+            fi
+
+            if pass insert -m "$entry" < "$temp_file" >/dev/null 2>&1; then
+                # Copy to clipboard
+                copy_to_clipboard "$generated_password"
+
+                rm -f "$temp_file"
+                echo
+                echo -e "${GREEN}✓${NC} ${BOLD}$action_text successful!${NC}"
+                echo -e "${BLUE}└${NC} Entry: ${CYAN}$entry${NC} | Auto-clear in ${YELLOW}${CLIPBOARD_CLEAR_TIME}s${NC}"
+                echo
+                return 0
+            else
+                rm -f "$temp_file"
+                print_error "Failed to insert password into pass store: $entry"
+                return 1
+            fi
+        else
+            print_error "Failed to generate custom password"
+            return 1
+        fi
+    fi
+
+    local action_text="Creating new password entry with pwgen"
+    [ "$is_update" = "true" ] && action_text="Updating existing password entry with pwgen"
+
+    # Build configuration string for display
+    local config_parts=()
+    config_parts+=("Length: $length")
+    [ "$include_lowercase" = "true" ] && config_parts+=("lowercase")
+    [ "$include_uppercase" = "true" ] && config_parts+=("uppercase")
+    [ "$include_numbers" = "true" ] && config_parts+=("numbers")
+    [ "$include_symbols" = "true" ] && config_parts+=("symbols")
+
+    print_progress "$action_text for: $entry"
+    print_info "pwgen Configuration" "$(IFS=', '; echo "${config_parts[*]}")"
+
+    # Generate password with pwgen
+    local generated_password
+    print_progress "Running pwgen ${pwgen_args[*]} $length"
+    generated_password=$(pwgen "${pwgen_args[@]}" "$length" 2>&1)
+
+    if [ -n "$generated_password" ] && [[ ! "$generated_password" =~ "pwgen:" ]]; then
+        # Handle special case for uppercase only
+        if [ "$include_lowercase" = "false" ] && [ "$include_uppercase" = "true" ] && [ "$include_numbers" = "false" ] && [ "$include_symbols" = "false" ]; then
+            generated_password=$(echo "$generated_password" | tr '[:lower:]' '[:upper:]')
+        fi
+
+        # Handle special case for numbers only
+        if [ "$include_lowercase" = "false" ] && [ "$include_uppercase" = "false" ] && [ "$include_numbers" = "true" ] && [ "$include_symbols" = "false" ]; then
+            generated_password=$(generate_numeric_password "$length")
+        fi
+
+        # Insert password into pass store
+        local temp_file
+        temp_file=$(create_temp_file)
+        echo "$generated_password" > "$temp_file"
+
+        if [ "$is_update" = "true" ]; then
+            # For updates, we need to preserve additional content
+            local existing_content
+            existing_content=$(pass show "$entry" 2>/dev/null | tail -n +2)
+            {
+                echo "$generated_password"
+                [ -n "$existing_content" ] && echo "$existing_content"
+            } > "$temp_file"
+        fi
+
+        if pass insert -m "$entry" < "$temp_file" >/dev/null 2>&1; then
+            # Copy to clipboard
+            copy_to_clipboard "$generated_password"
+
+            rm -f "$temp_file"
+            echo
+            echo -e "${GREEN}✓${NC} ${BOLD}$action_text successful!${NC}"
+            echo -e "${BLUE}└${NC} Entry: ${CYAN}$entry${NC} | Auto-clear in ${YELLOW}${CLIPBOARD_CLEAR_TIME}s${NC}"
+            echo
+            return 0
+        else
+            rm -f "$temp_file"
+            print_error "Failed to insert password into pass store: $entry"
+            return 1
+        fi
+    else
+        print_error "Failed to generate password with pwgen"
+        if [[ "$generated_password" =~ "pwgen:" ]]; then
+            print_error "pwgen error: $generated_password"
+        fi
+        print_info "Debug info" "pwgen_args: [${pwgen_args[*]}], length: $length"
+        return 1
+    fi
+}
+
+# Generate password from custom character classes (fallback)
+generate_password_from_char_classes() {
+    local length="$1"
+    local char_classes="$2"
+    local password=""
+    local chars=""
+
+    # Build character set
+    [[ "$char_classes" =~ a-z ]] && chars="${chars}abcdefghijklmnopqrstuvwxyz"
+    [[ "$char_classes" =~ A-Z ]] && chars="${chars}ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    [[ "$char_classes" =~ 0-9 ]] && chars="${chars}0123456789"
+    [[ "$char_classes" =~ "!@#$%^&*()_+\-=\[\]{}|;:,.<>?" ]] && chars="${chars}!@#$%^&*()_+-=[]{}|;:,.<>?"
+
+    if [ -z "$chars" ]; then
+        print_error "No valid character classes selected"
+        return 1
+    fi
+
+    # Generate password
+    for ((i=0; i<length; i++)); do
+        local random_index=$((RANDOM % ${#chars}))
+        password="${password}${chars:$random_index:1}"
+    done
+
+    echo "$password"
+    return 0
+}
+
+# Generate numeric password
+generate_numeric_password() {
+    local length="$1"
+    local password=""
+
+    for ((i=0; i<length; i++)); do
+        password="${password}$((RANDOM % 10))"
+    done
+
+    echo "$password"
+}
+
+handle_password_generation() {
+    local entry="$1"
+    local is_update="$2"
+
+    # Cache default values once at the beginning
+    local default_length
+    local default_symbols
+    default_length=$(get_default_length)
+    default_symbols=$(get_default_symbols)
+
+    show_password_generation_menu "$entry" "$is_update"
+
+    while true; do
+        echo -e "${BLUE}Select an option (1-6) [default: 1]:${NC}"
+        read -r choice
+
+        # Use option 1 as default if empty input
+        if [ -z "$choice" ]; then
+            choice="1"
+        fi
+
+        case "$choice" in
+            1)
+                generate_password_with_options "$entry" "$default_length" "true" "$is_update"
+                return $?
+                ;;
+            2)
+                generate_password_with_options "$entry" "$default_length" "false" "$is_update"
+                return $?
+                ;;
+            3)
+                local custom_length
+                custom_length=$(prompt_for_length "$default_length")
+                if [ -n "$custom_length" ] && [[ "$custom_length" =~ ^[0-9]+$ ]]; then
+                    generate_password_with_options "$entry" "$custom_length" "true" "$is_update"
+                    return $?
+                else
+                    print_error "Invalid password length received: $custom_length"
+                    return 1
+                fi
+                ;;
+            4)
+                local custom_length
+                custom_length=$(prompt_for_length "$default_length")
+                if [ -n "$custom_length" ] && [[ "$custom_length" =~ ^[0-9]+$ ]]; then
+                    generate_password_with_options "$entry" "$custom_length" "false" "$is_update"
+                    return $?
+                else
+                    print_error "Invalid password length received: $custom_length"
+                    return 1
+                fi
+                ;;
+            5)
+                echo
+                print_separator
+                print_title "Fully Custom Password Options"
+                echo -e "${BLUE}Let's configure your custom password step by step...${NC}"
+                echo
+                print_separator
+
+                local custom_length
+                local custom_symbols
+                local custom_numbers
+                local custom_uppercase
+                local custom_lowercase
+
+                # Step 1: Password Length
+                echo -e "${CYAN}📏 Step 1 of 5: Password Length${NC}"
+                echo -e "${BLUE}How many characters should your password have?${NC}"
+                echo -e "${BLUE}Enter password length (${CYAN}$MIN_PASSWORD_LENGTH-$MAX_PASSWORD_LENGTH${NC}, default: ${YELLOW}$default_length${NC}):"
+                read -r length_input
+
+                if [ -z "$length_input" ]; then
+                    custom_length="$default_length"
+                elif [[ "$length_input" =~ ^[0-9]+$ ]] && [ "$length_input" -ge "$MIN_PASSWORD_LENGTH" ] && [ "$length_input" -le "$MAX_PASSWORD_LENGTH" ]; then
+                    custom_length="$length_input"
+                else
+                    print_error "Please enter a number between $MIN_PASSWORD_LENGTH and $MAX_PASSWORD_LENGTH"
+                    print_warning "Using default length: $default_length"
+                    custom_length="$default_length"
+                fi
+                echo
+                print_info "✓ Length set" "$custom_length characters"
+                echo
+
+                # Step 2: Symbols
+                print_separator
+                echo -e "${CYAN}🔣 Step 2 of 5: Special Characters (Symbols)${NC}"
+                local symbols_default="n"
+                [[ "$default_symbols" == "true" ]] && symbols_default="y"
+                if confirm_action "Include special characters like !@#$%^&*()?" "$symbols_default"; then
+                    custom_symbols="true"
+                    local symbols_text="${GREEN}Yes${NC}"
+                else
+                    custom_symbols="false"
+                    local symbols_text="${RED}No${NC}"
+                fi
+                echo
+                print_info "✓ Symbols" "$symbols_text"
+                echo
+
+                # Step 3: Numbers
+                print_separator
+                echo -e "${CYAN}🔢 Step 3 of 5: Numbers${NC}"
+                if confirm_action "Include digits 0-9?" "y"; then
+                    custom_numbers="true"
+                    local numbers_text="${GREEN}Yes${NC}"
+                else
+                    custom_numbers="false"
+                    local numbers_text="${RED}No${NC}"
+                fi
+                echo
+                print_info "✓ Numbers" "$numbers_text"
+                echo
+
+                # Step 4: Uppercase Letters
+                print_separator
+                echo -e "${CYAN}🔤 Step 4 of 5: Uppercase Letters${NC}"
+                if confirm_action "Include capital letters A-Z?" "y"; then
+                    custom_uppercase="true"
+                    local uppercase_text="${GREEN}Yes${NC}"
+                else
+                    custom_uppercase="false"
+                    local uppercase_text="${RED}No${NC}"
+                fi
+                echo
+                print_info "✓ Uppercase" "$uppercase_text"
+                echo
+
+                # Step 5: Lowercase Letters
+                print_separator
+                echo -e "${CYAN}🔤 Step 5 of 5: Lowercase Letters${NC}"
+                if confirm_action "Include small letters a-z?" "y"; then
+                    custom_lowercase="true"
+                    local lowercase_text="${GREEN}Yes${NC}"
+                else
+                    custom_lowercase="false"
+                    local lowercase_text="${RED}No${NC}"
+                fi
+                echo
+                print_info "✓ Lowercase" "$lowercase_text"
+                echo
+
+                # Final Summary
+                print_separator
+                echo -e "${BLUE}📋 ${BOLD}Your Custom Password Configuration:${NC}"
+                echo -e "${BLUE}├─ Length:${NC} ${YELLOW}$custom_length${NC} characters"
+                echo -e "${BLUE}├─ Include symbols:${NC} $([ "$custom_symbols" = "true" ] && echo -e "${GREEN}Yes${NC}" || echo -e "${RED}No${NC}")"
+                echo -e "${BLUE}├─ Include numbers:${NC} $([ "$custom_numbers" = "true" ] && echo -e "${GREEN}Yes${NC}" || echo -e "${RED}No${NC}")"
+                echo -e "${BLUE}├─ Include uppercase:${NC} $([ "$custom_uppercase" = "true" ] && echo -e "${GREEN}Yes${NC}" || echo -e "${RED}No${NC}")"
+                echo -e "${BLUE}└─ Include lowercase:${NC} $([ "$custom_lowercase" = "true" ] && echo -e "${GREEN}Yes${NC}" || echo -e "${RED}No${NC}")"
+                echo
+
+                if confirm_action "Generate password with these custom settings?" "y"; then
+                    generate_custom_password_with_pwgen "$entry" "$custom_length" "$custom_symbols" "$is_update" "$custom_numbers" "$custom_uppercase" "$custom_lowercase"
+                    return $?
+                else
+                    print_warning "Custom password generation cancelled"
+                    return 1
+                fi
+                ;;
+            6)
+                print_warning "Password generation cancelled"
+                return 1
+                ;;
+            *)
+                print_error "Invalid option. Please select 1-6"
+                ;;
+        esac
+    done
+}
+
+handle_new_entry() {
+    local entry="$1"
+
+    echo
+    print_title "Create New Password Entry"
+
+    # If special entry was selected, ask for new entry name
+    if [ "$entry" = "$CREATE_NEW_ENTRY_MARKER" ]; then
+        echo -e "${BLUE}┌${NC} ${BOLD}Enter new entry name${NC}"
+        echo -e "${BLUE}└${NC} Example: ${YELLOW}websites/github.com${NC} or ${YELLOW}email/personal${NC}"
+        echo
+        echo -e "${BLUE}New entry name:${NC}"
+        read -r entry_input
+
+        if [ -z "$entry_input" ]; then
+            print_warning "No entry name provided"
+            return 1
+        fi
+
+        # Use improved validation function
+        if ! validate_entry_name "$entry_input"; then
+            print_error "Validation failed for entry name: $entry_input"
+            return 1
+        fi
+
+        entry="$entry_input"
+        print_info "Entry validated" "$entry"
+    else
+        # Double-check if the entry exists (this handles the case where Ctrl+G was pressed on a non-existent entry)
+        if entry_exists "$entry"; then
+            print_error "Entry already exists: $entry"
+            print_info "Solution" "Select the entry from the list and use Ctrl+G to regenerate, or choose a different name"
+            return 1
+        fi
+
+        echo -e "${BLUE}┌${NC} ${BOLD}Entry${NC}"
+        echo -e "${BLUE}└${NC} ${CYAN}$entry${NC}"
+        echo
+
+        if ! confirm_action "This entry does not exist. Do you want to create it?" "n"; then
+            print_warning "New entry creation cancelled"
+            return 1
+        fi
+    fi
+
+    echo
+    echo -e "${BLUE}┌${NC} ${BOLD}Entry to create${NC}"
+    echo -e "${BLUE}└${NC} ${CYAN}$entry${NC}"
+    echo
+
+    print_progress "Asking for creation method"
+    echo -e "${GREEN}How would you like to create this entry?${NC}"
+    echo -e "1) Generate password automatically ${YELLOW}[default]${NC}"
+    echo -e "2) Edit manually (open editor to enter content)"
+    echo -e "3) ${RED}Cancel${NC}"
+    echo
+    echo -e "${BLUE}Select an option (1-3) [default: 1]:${NC}"
+    read -r choice
+
+    # Use option 1 as default if empty input
+    if [ -z "$choice" ]; then
+        choice="1"
+    fi
+
+    case "$choice" in
+        1)
+            print_progress "Starting automatic password generation"
+            # Check if entry already exists before generating
+            if entry_exists "$entry"; then
+                print_error "Entry already exists: $entry"
+                print_info "Solution" "Select the entry from the list and use Ctrl+G to regenerate, or choose a different name"
+                return 1
+            fi
+            if handle_password_generation "$entry" "false"; then
+                print_success "New entry created successfully with generated password"
+                return 0
+            else
+                print_warning "Password generation failed or cancelled"
+                return 1
+            fi
+            ;;
+        2)
+            # Check if editor is configured
+            if [ -z "$EDITOR" ]; then
+                print_warning "No editor configured"
+                print_info "Set your editor" "export EDITOR=vim (or nano, code, etc.)"
+                print_info "Then try again"
+                return 1
+            fi
+
+            print_progress "Opening editor for manual entry creation"
+            print_info "Editor" "Using: $EDITOR"
+            echo -e "${BLUE}┌${NC} ${BOLD}Editor Instructions${NC}"
+            echo -e "${BLUE}├${NC} Line 1: ${YELLOW}Password (required)${NC}"
+            echo -e "${BLUE}├${NC} Line 2+: ${YELLOW}Additional information (optional)${NC}"
+            echo -e "${BLUE}└${NC} Save and close the editor when finished${NC}"
+            echo
+
+            if pass edit "$entry"; then
+                echo
+                print_success "Entry created successfully"
+                echo -e "${BLUE}└${NC} Entry: ${CYAN}$entry${NC} | Content saved from editor"
+                echo
+                return 0
+            else
+                print_error "Failed to create entry: $entry"
+                print_info "Troubleshooting" "Make sure your \$EDITOR is set (e.g., export EDITOR=vim)"
+                print_info "Example" "export EDITOR=nano  # or vim, code, etc."
+                return 1
+            fi
+            ;;
+        3)
+            print_warning "New entry creation cancelled"
+            return 1
+            ;;
+        *)
+            print_error "Invalid option. Please select 1-3"
+            # Retry the choice
+            return 1
+            ;;
+    esac
+}
+
+handle_existing_entry() {
+    local entry="$1"
+    local action="$2"
+
+    case "$action" in
+        "copy")
+            # Original behavior - copy password
+            if pass -c "$entry" >/dev/null 2>&1; then
+                echo
+                echo -e "${GREEN}✓${NC} ${BOLD}Password copied to clipboard!${NC}"
+                echo -e "${BLUE}└${NC} Entry: ${CYAN}$entry${NC} | Auto-clear in ${YELLOW}${CLIPBOARD_CLEAR_TIME}s${NC}"
+                echo
+                return 0
+            else
+                print_error "Failed to copy password for: $entry"
+                return 1
+            fi
+            ;;
+        "edit")
+            # Edit the entry with pass edit
+            print_progress "Opening entry for editing: $entry"
+            if pass edit "$entry"; then
+                echo
+                print_success "Entry edited successfully"
+                return 0
+            else
+                print_error "Failed to edit entry: $entry"
+                return 1
+            fi
+            ;;
+        "generate")
+            # Update existing password
+            if confirm_password_update "$entry"; then
+                if handle_password_generation "$entry" "true"; then
+                    return 0
+                else
+                    print_warning "Password update cancelled"
+                    return 1
+                fi
+            else
+                print_warning "Password update cancelled"
+                return 1
+            fi
+            ;;
+        "rename")
+            # Rename the entry
+            if handle_rename_entry "$entry"; then
+                return 0
+            else
+                print_warning "Entry rename cancelled or failed"
+                return 1
+            fi
+            ;;
+        "delete")
+            # Delete the entry
+            if handle_delete_entry "$entry"; then
+                return 0
+            else
+                print_warning "Entry deletion cancelled or failed"
+                return 1
+            fi
+            ;;
+        "view")
+            # View all entry attributes
+            if handle_view_all_attributes "$entry"; then
+                return 0
+            else
+                print_error "Failed to view entry attributes: $entry"
+                return 1
+            fi
+            ;;
+    esac
+}
+
+handle_delete_entry() {
+    local entry="$1"
+
+    echo
+    print_title "Delete Password Entry"
+
+    echo -e "${BLUE}┌${NC} ${BOLD}Entry to delete${NC}"
+    echo -e "${BLUE}└${NC} ${CYAN}$entry${NC}"
+    echo
+
+    echo -e "${RED}⚠${NC} ${BOLD}WARNING: This action cannot be undone!${NC}"
+    echo
+    print_info "Action" "This will permanently delete the password entry and all its content"
+
+    # Show what will be deleted (optional preview of content)
+    if pass show "$entry" >/dev/null 2>&1; then
+        local entry_preview
+        entry_preview=$(pass show "$entry" 2>/dev/null | head -1)
+        echo
+        echo -e "${BLUE}┌${NC} ${BOLD}Content preview${NC}"
+        echo -e "${BLUE}└${NC} Password: ${YELLOW}[HIDDEN]${NC}"
+        local additional_lines
+        additional_lines=$(pass show "$entry" 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
+        if [ "$additional_lines" -gt 0 ]; then
+            echo -e "${BLUE}└${NC} Additional info: ${YELLOW}$additional_lines line(s)${NC}"
+        fi
+        echo
+    fi
+
+    # Require explicit confirmation
+    echo -e "${RED}🔒 To confirm deletion, please type the entry name:${NC}"
+    echo -e "${BLUE}Entry name confirmation:${NC}"
+    read -r confirmation_input
+
+    if [ "$confirmation_input" != "$entry" ]; then
+        print_error "Entry name confirmation does not match"
+        print_info "Expected" "$entry"
+        print_info "Received" "$confirmation_input"
+        print_warning "Deletion cancelled for safety"
+        return 1
+    fi
+
+    echo
+    print_separator
+    echo -e "${RED}🗑️ ${BOLD}Final Confirmation${NC}"
+    echo -e "${RED}├─ Entry:${NC} ${CYAN}$entry${NC}"
+    echo -e "${RED}└─ Action:${NC} ${BOLD}Permanent deletion${NC}"
+    echo
+
+    if confirm_action "Are you absolutely sure you want to delete this entry?" "n"; then
+        print_progress "Deleting password entry"
+
+        # Use pass rm to delete the entry
+        print_progress "Removing entry: $entry"
+
+        if command -v timeout >/dev/null 2>&1; then
+            # Use timeout for pass rm to prevent hanging
+            if timeout 30s pass rm --force "$entry" >/dev/null 2>&1; then
+                echo
+                echo -e "${GREEN}✓${NC} ${BOLD}Entry deleted successfully!${NC}"
+                echo -e "${BLUE}└${NC} ${RED}$entry${NC} ${BLUE}has been permanently removed${NC}"
+                echo
+                print_info "Note" "The entry has been permanently deleted and cannot be recovered"
+                echo
+                return 0
+            else
+                print_error "Failed to delete entry: $entry"
+                print_error "This might be due to GPG agent issues or permission problems"
+                print_error "The operation timed out after 30 seconds"
+                print_info "The entry may still exist: $entry"
+                return 1
+            fi
+        else
+            # Fallback for systems without timeout command
+            if pass rm --force "$entry" >/dev/null 2>&1; then
+                echo
+                echo -e "${GREEN}✓${NC} ${BOLD}Entry deleted successfully!${NC}"
+                echo -e "${BLUE}└${NC} ${RED}$entry${NC} ${BLUE}has been permanently removed${NC}"
+                echo
+                print_info "Note" "The entry has been permanently deleted and cannot be recovered"
+                echo
+                return 0
+            else
+                print_error "Failed to delete entry: $entry"
+                print_error "This might be due to GPG agent issues or permission problems"
+                print_info "The entry may still exist: $entry"
+                return 1
+            fi
+        fi
+    else
+        print_warning "Entry deletion cancelled"
+        return 1
+    fi
+}
+
+handle_rename_entry() {
+    local entry="$1"
+
+    echo
+    print_title "Rename Password Entry"
+
+    echo -e "${BLUE}┌${NC} ${BOLD}Current entry${NC}"
+    echo -e "${BLUE}└${NC} ${CYAN}$entry${NC}"
+    echo
+
+    echo -e "${BLUE}┌${NC} ${BOLD}Enter new entry name${NC}"
+    echo -e "${BLUE}└${NC} Example: ${YELLOW}websites/newservice.com${NC} or ${YELLOW}work/newcompany${NC}"
+    echo
+    echo -e "${BLUE}New entry name:${NC}"
+    read -r new_entry_input
+
+    if [ -z "$new_entry_input" ]; then
+        print_warning "No new entry name provided"
+        return 1
+    fi
+
+    # Validate new entry name
+    if ! validate_entry_name "$new_entry_input"; then
+        print_error "Validation failed for new entry name: $new_entry_input"
+        return 1
+    fi
+
+    # Check if new entry name already exists
+    if entry_exists "$new_entry_input"; then
+        print_error "Entry already exists: $new_entry_input"
+        print_info "Solution" "Choose a different name or delete the existing entry first"
+        return 1
+    fi
+
+    # Check if new entry name is the same as current
+    if [ "$entry" = "$new_entry_input" ]; then
+        print_warning "New entry name is the same as current name"
+        return 1
+    fi
+
+    echo
+    print_separator
+    echo -e "${BLUE}🔄 ${BOLD}Rename Summary${NC}"
+    echo -e "${BLUE}├─ From:${NC} ${CYAN}$entry${NC}"
+    echo -e "${BLUE}└─ To:${NC} ${YELLOW}$new_entry_input${NC}"
+    echo
+
+    if confirm_action "Do you want to rename this entry?" "n"; then
+        print_progress "Renaming password entry"
+
+        # Use pass mv to rename the entry directly
+        print_progress "Moving entry from '$entry' to '$new_entry_input'"
+
+        if command -v timeout >/dev/null 2>&1; then
+            # Use timeout for pass mv to prevent hanging
+            if timeout 30s pass mv "$entry" "$new_entry_input" >/dev/null 2>&1; then
+                echo
+                echo -e "${GREEN}✓${NC} ${BOLD}Entry renamed successfully!${NC}"
+                echo -e "${BLUE}└${NC} ${CYAN}$entry${NC} → ${YELLOW}$new_entry_input${NC}"
+                echo
+                return 0
+            else
+                print_error "Failed to rename entry: $entry"
+                print_error "This might be due to GPG agent issues or permission problems"
+                print_error "The operation timed out after 30 seconds"
+                print_info "Original entry remains unchanged: $entry"
+                return 1
+            fi
+        else
+            # Fallback for systems without timeout command
+            if pass mv "$entry" "$new_entry_input" >/dev/null 2>&1; then
+                echo
+                echo -e "${GREEN}✓${NC} ${BOLD}Entry renamed successfully!${NC}"
+                echo -e "${BLUE}└${NC} ${CYAN}$entry${NC} → ${YELLOW}$new_entry_input${NC}"
+                echo
+                return 0
+            else
+                print_error "Failed to rename entry: $entry"
+                print_error "This might be due to GPG agent issues or permission problems"
+                print_info "Original entry remains unchanged: $entry"
+                return 1
+            fi
+        fi
+    else
+        print_warning "Entry rename cancelled"
+        return 1
+    fi
+}
+
+handle_view_all_attributes() {
+    local entry="$1"
+
+    echo
+    print_title "View All Entry Attributes (Secure Mode)"
+
+    # Get all entry content
+    local entry_content
+    entry_content=$(pass show "$entry" 2>/dev/null)
+
+    if [ -z "$entry_content" ]; then
+        print_error "Failed to retrieve entry content: $entry"
+        return 1
+    fi
+
+    # Parse entry content
+    local password
+    local attributes=()
+    local attr_names=()
+    local attr_keys=()
+
+    password=$(echo "$entry_content" | head -1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+    # Process additional lines as key-value pairs
+    while IFS= read -r line; do
+        if [ -n "$line" ] && [[ "$line" =~ ^[a-zA-Z0-9_-]+: ]]; then
+            local key="${line%%:*}"
+            local value="${line#*:}"
+            # Trim whitespace from key and value
+            key=$(trim_whitespace "$key")
+            value=$(trim_whitespace "$value")
+            # Reconstruct the trimmed line
+            local trimmed_line="$key: $value"
+            attributes+=("$trimmed_line")
+            attr_keys+=("$key")
+            attr_names+=("$key")
+        elif [ -n "$line" ]; then
+            # Handle lines without colon as additional info
+            local trimmed_line=$(trim_whitespace "$line")
+            local key="line_$((${#attributes[@]} + 1))"
+            attributes+=("$trimmed_line")
+            attr_keys+=("$key")
+            attr_names+=("Additional Info")
+        fi
+    done < <(echo "$entry_content" | tail -n +2)
+
+    # Display entry overview with all hidden values
+    echo -e "${BLUE}┌${NC} ${BOLD}Entry Overview (Secure Mode)${NC}"
+    echo -e "${BLUE}├${NC} Name: ${CYAN}$entry${NC}"
+    echo -e "${BLUE}├${NC} Password: ${YELLOW}[HIDDEN]${NC} (${#password} characters)"
+    echo -e "${BLUE}└${NC} Additional attributes: ${GREEN}${#attributes[@]}${NC} (all hidden)"
+    echo
+
+    # Display hidden attribute list
+    if [ ${#attributes[@]} -gt 0 ]; then
+        print_separator
+        echo -e "${BLUE}🔒 ${BOLD}Hidden Attributes (Select to Reveal):${NC}"
+        echo
+
+        local i=1
+        for key in "${attr_keys[@]}"; do
+            if [[ "$key" =~ ^line_[0-9]+$ ]]; then
+                echo -e "${CYAN}$i)${NC} ${YELLOW}[HIDDEN]${NC} Additional information"
+            else
+                echo -e "${CYAN}$i)${NC} ${BOLD}$key:${NC} ${YELLOW}[HIDDEN]${NC}"
+            fi
+            ((i++))
+        done
+        echo
+
+        print_info "Security Notice" "All values are hidden. Select an option to reveal and copy."
+        echo
+    fi
+
+    # Interactive menu for actions
+    while true; do
+        echo -e "${GREEN}What would you like to do?${NC}"
+        echo -e "1) Reveal and copy password"
+        [ ${#attributes[@]} -gt 0 ] && echo -e "2) Reveal and copy specific attribute"
+        [ ${#attributes[@]} -gt 0 ] && echo -e "3) ${YELLOW}View all attributes${NC} (reveal & copy everything)"
+        echo -e "4) Refresh view"
+        echo -e "5) ${RED}Back to main menu${NC}"
+        echo
+        echo -e "${BLUE}Select an option (1-5):${NC}"
+        read -r choice
+
+        case "$choice" in
+            1)
+                # Reveal and copy password
+                echo
+                print_separator
+                echo -e "${YELLOW}⚠${NC} ${BOLD}Password Reveal Confirmation${NC}"
+                echo -e "${BLUE}Are you sure you want to reveal and copy the password?${NC}"
+                echo -e "${BLUE}This will copy it to clipboard and display its length.${NC}"
+                echo
+
+                if confirm_action "Reveal and copy password?" "n"; then
+                    if copy_to_clipboard "$password"; then
+                        echo
+                        echo -e "${GREEN}✓${NC} ${BOLD}Password revealed and copied!${NC}"
+                        echo -e "${BLUE}├${NC} Length: ${YELLOW}${#password} characters${NC}"
+                        echo -e "${BLUE}└${NC} Auto-clear in ${YELLOW}${CLIPBOARD_CLEAR_TIME}s${NC}"
+                        echo
+                    else
+                        print_error "Failed to copy password to clipboard"
+                    fi
+                else
+                    print_warning "Password reveal cancelled"
+                fi
+                ;;
+            2)
+                # Reveal and copy specific attribute
+                if [ ${#attributes[@]} -eq 0 ]; then
+                    print_error "No attributes available to reveal"
+                    continue
+                fi
+
+                echo
+                echo -e "${BLUE}Select attribute to reveal and copy:${NC}"
+                local i=1
+                for key in "${attr_keys[@]}"; do
+                    if [[ "$key" =~ ^line_[0-9]+$ ]]; then
+                        echo -e "${CYAN}$i)${NC} Additional information"
+                    else
+                        echo -e "${CYAN}$i)${NC} $key"
+                    fi
+                    ((i++))
+                done
+                echo
+                echo -e "${BLUE}Enter attribute number (1-${#attributes[@]}):${NC}"
+                read -r attr_choice
+
+                if [[ "$attr_choice" =~ ^[0-9]+$ ]] && [ "$attr_choice" -ge 1 ] && [ "$attr_choice" -le ${#attributes[@]} ]; then
+                    local selected_attr="${attributes[$((attr_choice-1))]}"
+                    local selected_key="${attr_keys[$((attr_choice-1))]}"
+                    local copy_value
+                    local display_name
+
+                    if [[ "$selected_attr" =~ ^[a-zA-Z0-9_-]+: ]]; then
+                        copy_value=$(trim_whitespace "${selected_attr#*:}")
+                        display_name=$(trim_whitespace "${selected_attr%%:*}")
+                    else
+                        copy_value=$(trim_whitespace "$selected_attr")
+                        display_name="Additional Information"
+                    fi
+
+                    echo
+                    print_separator
+                    echo -e "${YELLOW}⚠${NC} ${BOLD}Attribute Reveal Confirmation${NC}"
+                    echo -e "${BLUE}Are you sure you want to reveal and copy:${NC} ${CYAN}$display_name${NC}"
+                    echo
+
+                    if confirm_action "Reveal and copy this attribute?" "n"; then
+                        if copy_to_clipboard "$copy_value"; then
+                            echo
+                            echo -e "${GREEN}✓${NC} ${BOLD}Attribute revealed and copied!${NC}"
+                            echo -e "${BLUE}├${NC} ${BOLD}$display_name:${NC} ${YELLOW}$copy_value${NC}"
+                            echo -e "${BLUE}└${NC} Auto-clear in ${YELLOW}${CLIPBOARD_CLEAR_TIME}s${NC}"
+                            echo
+                        else
+                            print_error "Failed to copy attribute to clipboard"
+                        fi
+                    else
+                        print_warning "Attribute reveal cancelled"
+                    fi
+                else
+                    print_error "Invalid attribute number"
+                fi
+                ;;
+            3)
+                # Reveal and copy all attributes
+                if [ ${#attributes[@]} -eq 0 ]; then
+                    print_error "No additional attributes to reveal"
+                    continue
+                fi
+
+                echo
+                print_separator
+                echo -e "${YELLOW}⚠${NC} ${BOLD}Full Reveal Confirmation${NC}"
+                echo -e "${BLUE}Are you sure you want to reveal and copy ALL attributes?${NC}"
+                echo -e "${BLUE}This includes: password + ${#attributes[@]} additional attributes${NC}"
+                echo -e "${RED}This will expose all sensitive information!${NC}"
+                echo
+
+                if confirm_action "View all attributes? This will reveal and copy everything." "n"; then
+                    # Build complete content string
+                    local all_content="$password"
+                    for attr in "${attributes[@]}"; do
+                        all_content="$all_content"$'\n'"$attr"
+                    done
+
+                    if copy_to_clipboard "$all_content"; then
+                        echo
+                        print_title "All Attributes Revealed"
+
+                        # Display password
+                        echo -e "${BLUE}┌${NC} ${BOLD}Password:${NC}"
+                        echo -e "${BLUE}├${NC} Length: ${YELLOW}${#password} characters${NC}"
+                        echo -e "${BLUE}└${NC} Value: ${GREEN}$password${NC}"
+                        echo
+
+                        # Display all attributes with their actual values
+                        if [ ${#attributes[@]} -gt 0 ]; then
+                            print_separator
+                            echo -e "${BLUE}${BOLD}Additional Attributes:${NC}"
+                            echo
+
+                            local i=1
+                            for attr in "${attributes[@]}"; do
+                                local key="${attr_keys[$((i-1))]}"
+                                local value
+
+                                if [[ "$attr" =~ ^[a-zA-Z0-9_-]+: ]]; then
+                                    value=$(trim_whitespace "${attr#*:}")
+                                    display_key=$(trim_whitespace "${attr%%:*}")
+                                else
+                                    value=$(trim_whitespace "$attr")
+                                    display_key="Additional Info"
+                                fi
+
+                                echo -e "${CYAN}$i) ${BOLD}$display_key:${NC}"
+                                echo -e "${BLUE}└${NC} $value"
+                                echo
+                                ((i++))
+                            done
+                        fi
+
+                        print_separator
+                        echo -e "${GREEN}✓${NC} ${BOLD}All content copied to clipboard!${NC}"
+                        echo -e "${BLUE}└${NC} Auto-clear in ${YELLOW}${CLIPBOARD_CLEAR_TIME}s${NC}"
+                        echo
+                        print_info "Summary" "Password + ${#attributes[@]} attributes"
+                        echo
+                    else
+                        print_error "Failed to copy attributes to clipboard"
+                    fi
+                else
+                    print_warning "View all attributes cancelled"
+                fi
+                ;;
+            4)
+                # Refresh view
+                echo
+                print_progress "Refreshing entry view"
+                return 1  # Return to caller to reload
+                ;;
+            5)
+                # Back to main menu
+                return 0
+                ;;
+            *)
+                print_error "Invalid option. Please select 1-5"
+                ;;
+        esac
+    done
+}
+
+# ============================================================================
+# MAIN FUNCTION
+# ============================================================================
+
+main() {
+    check_script_dependencies
+
+    # Validate password store directory
+    if [ ! -d "$PASSWORD_STORE_DIR" ]; then
+        print_error "Password store not found at: $PASSWORD_STORE_DIR"
+        print_error "Please initialize pass with: pass init <gpg-id>"
+        safe_exit 1
+    fi
+
+    print_title "Pass + Fzf Interactive Password Selection v$SCRIPT_VERSION"
+
+    # Get password entries using optimized function
+    local password_entries
+    password_entries=$(get_password_entries)
+
+    if [ -z "$password_entries" ]; then
+        print_error "No password entries found in store"
+        print_error "Add passwords with: pass insert <name>"
+        safe_exit 1
+    fi
+
+    # Create secure temporary file and set up cleanup
+    local temp_file
+    temp_file=$(create_temp_file)
+    trap 'rm -f "$temp_file"' EXIT
+
+    # Build entries list with process substitution (performance optimization)
+    {
+        echo "$CREATE_NEW_ENTRY_MARKER"
+        echo "$password_entries"
+    } > "$temp_file"
+
+    # Use fzf for interactive selection with multiple key bindings
+    local fzf_result
+    fzf_result=$(cat "$temp_file" | fzf \
+        --expect=enter,ctrl-e,ctrl-g,ctrl-r,ctrl-d,ctrl-v \
+        --prompt="Select password entry: " \
+        --height=80% \
+        --layout=reverse \
+        --border \
+        --preview="if [ {} = '$CREATE_NEW_ENTRY_MARKER' ]; then echo 'Create a new password entry with custom name'; else echo 'Entry: {}'; fi" \
+        --preview-window=down:1 \
+        --header="⏎ copy | ^E edit | ^G regenerate | ^R rename | ^D delete | ^V view")
+
+    # Parse fzf result (first line is key, second line is selected entry)
+    local key
+    local selected_entry
+    key=$(echo "$fzf_result" | head -1)
+    selected_entry=$(echo "$fzf_result" | tail -1)
+
+    # Check if user made a selection
+    if [ -n "$selected_entry" ]; then
+        # Handle special "Create New" entry
+        if [ "$selected_entry" = "$CREATE_NEW_ENTRY_MARKER" ]; then
+            case "$key" in
+                "enter")
+                    if ! handle_new_entry "$selected_entry"; then
+                        # handle_new_entry already prints appropriate error message
+                        safe_exit 1
+                    fi
+                    ;;
+                "ctrl-e"|"ctrl-g"|"ctrl-r"|"ctrl-d"|"ctrl-v")
+                    print_error "Cannot edit, regenerate, rename, delete, or view for a new entry creation"
+                    print_info "Solution" "Use Enter to create a new entry"
+                    safe_exit 1
+                    ;;
+                *)
+                    print_warning "Invalid operation for new entry creation"
+                    exit 0
+                    ;;
+            esac
+        else
+            # Handle existing entries using optimized entry_exists function
+            if entry_exists "$selected_entry"; then
+                case "$key" in
+                    "enter")
+                        handle_existing_entry "$selected_entry" "copy"
+                        ;;
+                    "ctrl-e")
+                        handle_existing_entry "$selected_entry" "edit"
+                        ;;
+                    "ctrl-g")
+                        handle_existing_entry "$selected_entry" "generate"
+                        ;;
+                    "ctrl-r")
+                        handle_existing_entry "$selected_entry" "rename"
+                        ;;
+                    "ctrl-d")
+                        handle_existing_entry "$selected_entry" "delete"
+                        ;;
+                    "ctrl-v")
+                        handle_existing_entry "$selected_entry" "view"
+                        ;;
+                    *)
+                        print_warning "No selection made"
+                        exit 0
+                        ;;
+                esac
+            else
+                case "$key" in
+                    "enter")
+                        print_error "Entry '$selected_entry' does not exist"
+                        print_info "Solution" "Select '$CREATE_NEW_ENTRY_MARKER' to create a new entry or select an existing entry"
+                        safe_exit 1
+                        ;;
+                    "ctrl-e")
+                        print_error "Cannot edit non-existent entry: $selected_entry"
+                        print_warning "Select '$CREATE_NEW_ENTRY_MARKER' to create a new entry"
+                        safe_exit 1
+                        ;;
+                    "ctrl-g")
+                        handle_new_entry "$selected_entry"
+                        ;;
+                    "ctrl-r")
+                        print_error "Cannot rename non-existent entry: $selected_entry"
+                        print_warning "Select '$CREATE_NEW_ENTRY_MARKER' to create a new entry"
+                        safe_exit 1
+                        ;;
+                    "ctrl-d")
+                        print_error "Cannot delete non-existent entry: $selected_entry"
+                        print_warning "Select '$CREATE_NEW_ENTRY_MARKER' to create a new entry"
+                        safe_exit 1
+                        ;;
+                    "ctrl-v")
+                        print_error "Cannot view non-existent entry: $selected_entry"
+                        print_warning "Select '$CREATE_NEW_ENTRY_MARKER' to create a new entry"
+                        safe_exit 1
+                        ;;
+                    *)
+                        print_warning "No selection made"
+                        exit 0
+                        ;;
+                esac
+            fi
+        fi
+    else
+        print_warning "No selection made"
+        exit 0
+    fi
+}
+
+# Run main function
+main "$@"

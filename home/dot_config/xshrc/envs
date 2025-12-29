@@ -1,0 +1,28 @@
+# claude code
+export DISABLE_AUTOUPDATER=1
+
+# PATH
+export PATH="$HOME/.local/xbin:$PATH"
+
+# OS-specific configuration
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS (Darwin)
+    export PATH="$HOME/.local/xbin/darwin/:$PATH"
+fi
+
+# tobi try
+export TRY_PATH=~/Workspace/Tries
+#
+# https://wiki.archlinux.org/title/XDG_Base_Directory
+# XDG_CONFIG_HOME is an environment variable that specifies the directory where user-specific configuration files should be stored.
+# For example, git previously used a configuration file of ~/.gitconfig, and after configuring the environment variables there, you can use ~/.config/git/config as the configuration file.
+export XDG_CONFIG_HOME="$HOME/.config"
+# XDG standard path
+export XDG_CACHE_HOME="$HOME/.cache"
+export XDG_DATA_HOME="$HOME/.local/share"
+
+# ssh
+export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/ssh-agent.socket"
+
+# term
+export TERM=xterm-256color

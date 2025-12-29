@@ -1,0 +1,6 @@
+# use skhd -o and press key to see keycode of the key
+
+# password
+# 0x2C is keycode of /
+cmd + shift - 0x2C : export EDITOR=nvim && osascript -e 'tell application "Ghostty" to do script' || open -na /Applications/Ghostty.app --args -e "pass_fzf"
+

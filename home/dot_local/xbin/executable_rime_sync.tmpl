@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# Rime input method sync command implementation
+
+# Source common functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common_functions.sh"
+
+print_title "Syncing Rime Input Method"
+
+{{- if eq .chezmoi.os "darwin" }}
+print_progress "Syncing Rime configuration on macOS..."
+cd ~/Library/Rime || {
+    print_error "Rime directory not found: ~/Library/Rime"
+    exit 1
+}
+DYLD_LIBRARY_PATH="/Library/Input Methods/Squirrel.app/Contents/Frameworks" "/Library/Input Methods/Squirrel.app/Contents/MacOS/Squirrel" --quit
+DYLD_LIBRARY_PATH="/Library/Input Methods/Squirrel.app/Contents/Frameworks" "/Library/Input Methods/Squirrel.app/Contents/MacOS/rime_dict_manager" -s > /dev/null 2>&1
+print_success "Rime configuration synced successfully"
+{{- else if eq .chezmoi.os "linux" }}
+print_progress "Syncing Rime configuration on Linux..."
+# archlinux install qdbus use pacman
+# sudo pacman -S qt5-tools
+if ! command -v qdbus >/dev/null 2>&1; then
+    print_error "qdbus not found. Please install qt5-tools: sudo pacman -S qt5-tools"
+    exit 1
+fi
+qdbus org.fcitx.Fcitx5 /controller org.fcitx.Fcitx.Controller1.SetConfig fcitx://config/addon/rime/deploy ''
+qdbus org.fcitx.Fcitx5 /controller org.fcitx.Fcitx.Controller1.SetConfig fcitx://config/addon/rime/sync ''
+print_success "Rime configuration synced successfully"
+{{- else }}
+print_error "Unsupported operating system for Rime sync"
+exit 1
+{{- end }}
+
+print_completion_conditional

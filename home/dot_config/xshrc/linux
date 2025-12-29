@@ -1,0 +1,32 @@
+# Linux specific shell configuration
+
+# alias
+alias copy="wl-copy"
+alias zed="zeditor"
+
+# ssh
+# ensure ssh-agent systemd enabled
+if ! systemctl --user is-active --quiet ssh-agent.service; then
+  systemctl --user enable --now ssh-agent.service >/dev/null 2>&1
+fi
+
+# if ssh agent not add secret, then add it
+if ! ssh-add -l &>/dev/null; then
+  KEY="$HOME/.ssh/github_knothhe"
+  if [ -f "$KEY" ]; then
+    ssh-add "$KEY" </dev/null >/dev/null 2>&1
+  fi
+fi
+
+# x_update function - prompt and execute system update with proxy management
+x_update() {
+  echo "This will execute: proxyoff && sudo pacman -Syu && proxyon && omarchy-update"
+  echo "The system will be updated and proxy settings will be temporarily disabled."
+  read -p "Do you want to continue? (y/N): " -n 1 -r
+  echo
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    proxyoff && sudo pacman -Syu && proxyon && omarchy-update
+  else
+    echo "Update cancelled."
+  fi
+}

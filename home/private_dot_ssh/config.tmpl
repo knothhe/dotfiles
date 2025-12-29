@@ -1,0 +1,59 @@
+{{- if eq .chezmoi.os "darwin" -}}
+# Added by OrbStack: 'orb' SSH host for Linux machines
+# This only works if it's at the top of ssh_config (before any Host blocks).
+# This won't be added again if you remove it.
+Include ~/.orbstack/ssh/config
+{{- end }}
+
+{{- if .work -}}
+Include ~/.ssh/work_config
+{{- end }}
+
+Host github.com
+    HostName github.com
+    User git
+    AddKeysToAgent yes
+    IdentityFile ~/.ssh/github_knothhe
+    {{- if eq .chezmoi.os "darwin" }}
+    UseKeychain yes
+    {{- end }}
+
+Host github0.com
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/github_dev
+
+Host v1.claw.cloud
+    HostName {{ pass "guanglai/vps/clawcloud/ip" }}
+    User guanglai
+    Port 2233
+    PreferredAuthentications publickey
+    IdentityFile ~/.ssh/claw_cloud
+
+Host tencent_tokyo
+    HostName {{ pass "guanglai/vps/tencent/tokyo_debian_ip" }}
+    User guanglai
+    Port 22
+    PreferredAuthentications publickey
+    IdentityFile ~/.ssh/tencent_tokyo_debian
+
+Host pvebian
+    HostName {{ pass "guanglai/vps/home/pvebian_ip" }}
+    User guanglai
+    Port 22
+    PreferredAuthentications publickey
+    IdentityFile ~/.ssh/pve
+
+Host pve
+    HostName {{ pass "guanglai/vps/home/pve_ip" }}
+    User root
+    Port 22
+    PreferredAuthentications publickey
+    IdentityFile ~/.ssh/pve
+
+Host fnos
+    HostName {{ pass "guanglai/vps/home/fnos_ip" }}
+    User guanglai
+    Port 22
+    PreferredAuthentications publickey
+    IdentityFile ~/.ssh/pve

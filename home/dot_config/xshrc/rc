@@ -1,0 +1,24 @@
+# source
+source_file() {
+    local file="$1"
+    if [[ -f "$file" ]]; then
+        source "$file"
+    fi
+}
+
+source_file "$HOME/.config/xshrc/alias"
+source_file "$HOME/.config/xshrc/envs"
+source_file "$HOME/.config/xshrc/functions"
+source_file "$HOME/.config/xshrc/keybindings"
+source_file "$HOME/.config/xshrc/proxy"
+source_file "$HOME/.config/xshrc/tmpl"
+
+# OS-specific configuration
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS (Darwin)
+    source_file "$HOME/.config/xshrc/darwin"
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    # Linux
+    source_file "$HOME/.config/xshrc/linux"
+fi
+

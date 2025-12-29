@@ -1,0 +1,27 @@
+# OS specific scripts
+# macOS only
+{{ if ne .chezmoi.os "darwin" }}
+.chezmoiscripts/darwin/**
+.config/skhd/**
+.local/xbin/darwin/**
+{{ end }}
+
+# linux only
+{{ if ne .chezmoi.os "linux" }}
+.chezmoiscripts/linux/**
+.config/fcitx5/**
+.config/fontconfig/**
+.config/hypr/**
+.local/share/fcitx5/**
+.local/xbin/hypr/**
+.local/xbin/linux/**
+.xprofile
+{{ end }}
+
+# pass files
+{{ if .excludePassFile }}
+.config/x-export/**
+.config/xshrc/tmpl
+.piclist/config.json
+.ssh/config
+{{end}}

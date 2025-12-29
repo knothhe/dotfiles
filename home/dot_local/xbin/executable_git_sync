@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# Generic git sync command implementation
+# Function: Sync any git repository to remote, auto-commit uncommitted changes
+# Usage: git_sync <directory_path> [repository_name]
+
+set -e
+
+# Source common functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common_functions.sh"
+
+# Check for help arguments
+if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+    cat << EOF
+Usage: $0 <directory_path> [repository_name]
+
+Arguments:
+    directory_path    Path to the git repository to sync
+    repository_name   Optional name for the repository (defaults to directory name)
+
+Examples:
+    $0 ~/Documents/Obsidian Obsidian
+    $0 ~/Projects/my-project
+EOF
+    exit 0
+fi
+
+# Parameter validation
+if [ $# -lt 1 ]; then
+  print_error "Usage: $0 <directory_path> [repository_name]"
+  print_info "Example" "$0 ~/Documents/Obsidian Obsidian"
+  exit 1
+fi
+
+SYNC_DIR="$1"
+REPO_NAME="${2:-$(basename "$SYNC_DIR")}"
+
+# Use the common git_sync function
+if git_sync "$SYNC_DIR" "$REPO_NAME"; then
+    print_completion_conditional
+    exit 0
+else
+    print_failure "git_sync operation"
+    exit 1
+fi

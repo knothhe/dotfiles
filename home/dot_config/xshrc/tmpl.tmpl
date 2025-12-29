@@ -1,0 +1,81 @@
+chezmoi-cd() {
+    local chezmoi_dir="${CHEZMOI_WORKING_TREE:-$HOME/.local/share/chezmoi}"
+    cd "$chezmoi_dir"
+}
+
+# Claude Code launcher with model provider switching
+cc() {
+    local provider=""
+    local claude_args=()
+
+    if [[ $# -eq 0 ]]; then
+        echo "Usage: cc <provider> [claude_code_args...]"
+        echo ""
+        echo "Providers:"
+        echo "  anthropic    Use Anthropic Claude models (aliases: anth)"
+        echo "  bigmodel     Use BigModel (glm-4.5) models (aliases: glm, big)"
+        echo "  moonshot     Use Moonshot AI models (aliases: moon, kimi)"
+        echo ""
+        echo "Examples:"
+        echo "  cc anthropic --model sonnet-4-5"
+        echo "  cc bigmodel --help"
+        echo "  cc moonshot my_project/"
+        echo "  cc glm --help                    # Same as 'cc bigmodel --help'"
+        echo "  cc moon my_project/              # Same as 'cc moonshot my_project/'"
+        echo "  cc anth --model sonnet-4-5       # Same as 'cc anthropic --model sonnet-4-5'"
+        return 1
+    fi
+
+    provider="$1"
+    shift
+
+    # Unset all relevant environment variables to avoid conflicts
+    unset ANTHROPIC_MODEL_PROVIDER
+    unset ANTHROPIC_BASE_URL
+    unset ANTHROPIC_AUTH_TOKEN
+    unset ANTHROPIC_MODEL
+    unset ANTHROPIC_SMALL_FAST_MODEL
+
+    case "$provider" in
+        "anthropic"|"anth")
+            # Anthropic Claude configuration
+            export ANTHROPIC_MODEL_PROVIDER="anthropic"
+            # unset any custom BASE_URL to use Anthropic's default
+            unset ANTHROPIC_BASE_URL
+            # Auth token will be set from envs.tmpl via pass template
+            claude_args=("$@")
+            ;;
+        "bigmodel"|"glm"|"big")
+            # BigModel (glm-4.5) configuration
+            export ANTHROPIC_MODEL_PROVIDER="bigmodel"
+            export ANTHROPIC_BASE_URL=https://open.bigmodel.cn/api/anthropic
+            export ANTHROPIC_AUTH_TOKEN={{ pass "token/bigmodel/anthropic_auth_token" }}
+            # Auto-select models (commented out to let Claude Code choose)
+            # export ANTHROPIC_MODEL=glm-4.5
+            # export ANTHROPIC_SMALL_FAST_MODEL=glm-4.5-air
+            claude_args=("$@")
+            ;;
+        "moonshot"|"moon"|"kimi")
+            # Moonshot AI configuration
+            export ANTHROPIC_MODEL_PROVIDER="moonshot"
+            export ANTHROPIC_BASE_URL=https://api.moonshot.cn/anthropic
+            export ANTHROPIC_AUTH_TOKEN={{ pass "token/moonshot/anthropic_auth_token" }}
+            export ANTHROPIC_MODEL=kimi-k2-turbo-preview
+            export ANTHROPIC_SMALL_FAST_MODEL=kimi-k2-turbo-preview
+            claude_args=("$@")
+            ;;
+        *)
+            echo "Error: Unknown provider '$provider'"
+            echo "Supported providers: anthropic, bigmodel, moonshot"
+            return 1
+            ;;
+    esac
+
+    echo "Starting Claude Code with provider: ${provider}"
+    if [[ ${#claude_args[@]} -gt 0 ]]; then
+        echo "Additional args: ${claude_args[*]}"
+    fi
+
+    # Launch Claude Code with the configured environment
+    claude "${claude_args[@]}"
+}

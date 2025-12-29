@@ -1,0 +1,24 @@
+{
+  "name": "R2",
+  "data": {
+    "s3": {
+      "endpoint": "{{ pass "token/cloudflare/kn/r2-s3/endpoint" }}",
+      "bucket": "images",
+      "region": "apac",
+      "accKeyId": "{{ pass "token/cloudflare/kn/r2-s3/accessKeyID" }}",
+      "secretAccKey": "{{ pass "token/cloudflare/kn/r2-s3/secretAccessKey" }}",
+      "forcePathStyle": false,
+      "pubUrl": "https://images-oss.guanglai.me/"
+    },
+    "upload": {
+      "keyTemplate": "{{ print "{{year}}/{{month}}-{{day}}-{{ulid-dayslice}}.{{ext}}" }}",
+      "compressionOption": {
+        "type": "webp",
+        "quality": 75
+      }
+    },
+    "gallery": {
+      "autoRefresh": true
+    }
+  }
+}

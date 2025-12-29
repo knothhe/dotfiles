@@ -1,0 +1,114 @@
+{
+  "config": {
+    "language": {
+      "detectedCode": "eng",
+      "sourceCode": "auto",
+      "targetCode": "cmn",
+      "level": "intermediate"
+    },
+    "providersConfig": [
+      {
+        "id": "google-default",
+        "name": "Google Translate",
+        "enabled": true,
+        "provider": "google"
+      },
+      {
+        "id": "microsoft-default",
+        "name": "Microsoft Translator",
+        "enabled": true,
+        "provider": "microsoft"
+      },
+      {
+        "id": "deepseek-default",
+        "name": "DeepSeek",
+        "enabled": true,
+        "apiKey": "{{ pass "token/deepseek/read-frog" }}",
+        "baseURL": "https://api.deepseek.com/v1",
+        "provider": "deepseek",
+        "models": {
+          "read": {
+            "model": "deepseek-chat",
+            "isCustomModel": false,
+            "customModel": null
+          },
+          "translate": {
+            "model": "deepseek-chat",
+            "isCustomModel": false,
+            "customModel": ""
+          }
+        }
+      },
+      {
+        "id": "deeplx-default",
+        "name": "DeepLX",
+        "enabled": true,
+        "baseURL": "{{ pass "token/deeplx/linuxdo" }}",
+        "provider": "deeplx"
+      }
+    ],
+    "read": {
+      "providerId": "deepseek-default"
+    },
+    "translate": {
+      "providerId": "deeplx-default",
+      "mode": "bilingual",
+      "node": {
+        "enabled": true,
+        "hotkey": "Alt"
+      },
+      "page": {
+        "range": "main",
+        "autoTranslatePatterns": [
+          "news.ycombinator.com"
+        ],
+        "autoTranslateLanguages": [],
+        "shortcut": [
+          "alt",
+          "q"
+        ],
+        "enableLLMDetection": false
+      },
+      "enableAIContentAware": true,
+      "customPromptsConfig": {
+        "promptId": null,
+        "patterns": []
+      },
+      "requestQueueConfig": {
+        "capacity": 500,
+        "rate": 8
+      },
+      "batchQueueConfig": {
+        "maxCharactersPerBatch": 1000,
+        "maxItemsPerBatch": 4
+      },
+      "translationNodeStyle": {
+        "preset": "default",
+        "isCustom": false,
+        "customCSS": null
+      }
+    },
+    "tts": {
+      "providerId": null,
+      "model": "tts-1",
+      "voice": "alloy",
+      "speed": 1
+    },
+    "floatingButton": {
+      "enabled": false,
+      "position": 0.66,
+      "disabledFloatingButtonPatterns": []
+    },
+    "selectionToolbar": {
+      "enabled": false,
+      "disabledSelectionToolbarPatterns": []
+    },
+    "sideContent": {
+      "width": 420
+    },
+    "betaExperience": {
+      "enabled": false
+    }
+  },
+  "__configSchemaVersion": 34
+}
