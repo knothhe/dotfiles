@@ -12,22 +12,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Source common functions library
 source "$SCRIPT_DIR/common_functions.sh"
 
-# Repository list format: "name|url|target_directory|branch"
+# Repository list format: "name|url|target_directory|branch|clone_options"
 REPOSITORY_LIST=(
-    "obsidian|git@github.com:knothhe/obsidian.git|~/Workspace/Obsidian|"
-    "guanglai-secrets|git@github.com:knothhe/guanglai-secrets.git|~/Workspace/Github/knothhe/guanglai-secrets"
-    "guanglai-scripts|git@github.com:knothhe/guanglai-scripts.git|~/Workspace/Github/knothhe/guanglai-scripts"
-    "blog-astro|git@github.com:knothhe/blog-astro.git|~/Workspace/Github/knothhe/blog-astro"
+    "obsidian|git@github.com:knothhe/obsidian.git|~/Workspace/Obsidian||"
+    "guanglai-secrets|git@github.com:knothhe/guanglai-secrets.git|~/Workspace/Github/knothhe/guanglai-secrets||"
+    "guanglai-scripts|git@github.com:knothhe/guanglai-scripts.git|~/Workspace/Github/knothhe/guanglai-scripts||"
+    "blog-astro|git@github.com:knothhe/blog-astro.git|~/Workspace/Github/knothhe/blog-astro||"
 )
 
 # OS-specific repositories
 if is_darwin; then
     REPOSITORY_LIST+=(
-        "rime|git@github.com:knothhe/rime-ice.git|~/Library/Rime|custom"
+        "rime|git@github.com:knothhe/rime-ice.git|~/Library/Rime|custom|--depth 1"
     )
 elif is_linux; then
     REPOSITORY_LIST+=(
-        "rime|git@github.com:knothhe/rime-ice.git|~/.local/share/fcitx5/rime|custom"
+        "rime|git@github.com:knothhe/rime-ice.git|~/.local/share/fcitx5/rime|custom|--depth 1"
     )
 fi
 
@@ -66,12 +66,16 @@ list_repositories() {
         local url=$(echo "$repo" | cut -d'|' -f2)
         local target=$(echo "$repo" | cut -d'|' -f3)
         local branch=$(echo "$repo" | cut -d'|' -f4)
+        local clone_options=$(echo "$repo" | cut -d'|' -f5)
 
         echo -e "${BLUE}${index}.${NC} ${BOLD}$name${NC}"
         echo -e "   URL: ${CYAN}$url${NC}"
         echo -e "   Target: ${GREEN}$target${NC}"
         if [ -n "$branch" ]; then
             echo -e "   Branch: ${YELLOW}$branch${NC}"
+        fi
+        if [ -n "$clone_options" ]; then
+            echo -e "   Options: ${MAGENTA}$clone_options${NC}"
         fi
         echo
         ((index++))
@@ -86,22 +90,31 @@ clone_repository() {
     local url="$2"
     local target_dir="$3"
     local branch="$4"
-    local dry_run="$5"
+    local clone_options="$5"
+    local dry_run="$6"
 
     local expanded_target=$(expand_path "$target_dir")
     local parent_dir=$(dirname "$expanded_target")
 
     if [ "$dry_run" = "true" ]; then
-        if [ -n "$branch" ]; then
+        if [ -n "$branch" ] && [ -n "$clone_options" ]; then
+            print_progress "[DRY RUN] Would clone $name (branch: $branch, options: $clone_options) to $expanded_target"
+        elif [ -n "$branch" ]; then
             print_progress "[DRY RUN] Would clone $name (branch: $branch) to $expanded_target"
+        elif [ -n "$clone_options" ]; then
+            print_progress "[DRY RUN] Would clone $name (options: $clone_options) to $expanded_target"
         else
             print_progress "[DRY RUN] Would clone $name to $expanded_target"
         fi
         return 0
     fi
 
-    if [ -n "$branch" ]; then
+    if [ -n "$branch" ] && [ -n "$clone_options" ]; then
+        print_progress "Cloning $name (branch: $branch, options: $clone_options)..."
+    elif [ -n "$branch" ]; then
         print_progress "Cloning $name (branch: $branch)..."
+    elif [ -n "$clone_options" ]; then
+        print_progress "Cloning $name (options: $clone_options)..."
     else
         print_progress "Cloning $name..."
     fi
@@ -112,10 +125,16 @@ clone_repository() {
     fi
 
     # Clone the repository
-    local clone_args=("$url" "$expanded_target")
-    if [ -n "$branch" ]; then
-        clone_args=("-b" "$branch" "$url" "$expanded_target")
+    local clone_args=()
+    if [ -n "$clone_options" ]; then
+        # Split clone_options into array
+        read -ra opts <<<"$clone_options"
+        clone_args+=("${opts[@]}")
     fi
+    if [ -n "$branch" ]; then
+        clone_args+=("-b" "$branch")
+    fi
+    clone_args+=("$url" "$expanded_target")
 
     if git clone "${clone_args[@]}"; then
         print_success "Successfully cloned $name"
@@ -140,8 +159,14 @@ select_repositories() {
         local name=$(echo "$repo" | cut -d'|' -f1)
         local url=$(echo "$repo" | cut -d'|' -f2)
         local branch=$(echo "$repo" | cut -d'|' -f4)
-        if [ -n "$branch" ]; then
+        local clone_options=$(echo "$repo" | cut -d'|' -f5)
+
+        if [ -n "$branch" ] && [ -n "$clone_options" ]; then
+            printf "${BLUE}%2d${NC}. ${BOLD}%-20s${NC} ${CYAN}%s${NC} (${YELLOW}%s${NC}, ${MAGENTA}%s${NC})\n" "$index" "$name" "$url" "$branch" "$clone_options"
+        elif [ -n "$branch" ]; then
             printf "${BLUE}%2d${NC}. ${BOLD}%-20s${NC} ${CYAN}%s${NC} (${YELLOW}%s${NC})\n" "$index" "$name" "$url" "$branch"
+        elif [ -n "$clone_options" ]; then
+            printf "${BLUE}%2d${NC}. ${BOLD}%-20s${NC} ${CYAN}%s${NC} (${MAGENTA}%s${NC})\n" "$index" "$name" "$url" "$clone_options"
         else
             printf "${BLUE}%2d${NC}. ${BOLD}%-20s${NC} ${CYAN}%s${NC}\n" "$index" "$name" "$url"
         fi
@@ -270,12 +295,16 @@ clone_selected_repositories() {
         local url=$(echo "$repo" | cut -d'|' -f2)
         local target=$(echo "$repo" | cut -d'|' -f3)
         local branch=$(echo "$repo" | cut -d'|' -f4)
+        local clone_options=$(echo "$repo" | cut -d'|' -f5)
 
         printf "${BLUE}%2d${NC}. ${BOLD}%-15s${NC}\n" "$index" "$name"
         printf "    ${CYAN}URL:${NC} %s\n" "$url"
         printf "    ${GREEN}Target:${NC} %s\n" "$target"
         if [ -n "$branch" ]; then
             printf "    ${YELLOW}Branch:${NC} %s\n" "$branch"
+        fi
+        if [ -n "$clone_options" ]; then
+            printf "    ${MAGENTA}Options:${NC} %s\n" "$clone_options"
         fi
         echo
         ((index++))
@@ -364,8 +393,9 @@ clone_selected_repositories() {
         local url=$(echo "$repo" | cut -d'|' -f2)
         local target=$(echo "$repo" | cut -d'|' -f3)
         local branch=$(echo "$repo" | cut -d'|' -f4)
+        local clone_options=$(echo "$repo" | cut -d'|' -f5)
 
-        if clone_repository "$name" "$url" "$target" "$branch" "$DRY_RUN_MODE"; then
+        if clone_repository "$name" "$url" "$target" "$branch" "$clone_options" "$DRY_RUN_MODE"; then
             ((success_count++))
         fi
         echo
@@ -412,8 +442,9 @@ clone_all_repositories() {
         local url=$(echo "$repo" | cut -d'|' -f2)
         local target=$(echo "$repo" | cut -d'|' -f3)
         local branch=$(echo "$repo" | cut -d'|' -f4)
+        local clone_options=$(echo "$repo" | cut -d'|' -f5)
 
-        if clone_repository "$name" "$url" "$target" "$branch" "$DRY_RUN_MODE"; then
+        if clone_repository "$name" "$url" "$target" "$branch" "$clone_options" "$DRY_RUN_MODE"; then
             ((success_count++))
         fi
         echo
@@ -463,12 +494,23 @@ add_custom_repository() {
         branch=""
     fi
 
-    # Add to repository list
-    REPOSITORY_LIST+=("$name|$url|$target|$branch")
+    read -p "Clone options (optional, e.g., '--depth 1', press Enter for none): " clone_options
+    if [ -z "$clone_options" ]; then
+        clone_options=""
+    fi
 
-    if [ -n "$branch" ]; then
+    # Add to repository list
+    REPOSITORY_LIST+=("$name|$url|$target|$branch|$clone_options")
+
+    if [ -n "$branch" ] && [ -n "$clone_options" ]; then
+        print_success "Repository '$name' added successfully"
+        print_info "Repository Details" "URL: $url | Target: $target | Branch: $branch | Options: $clone_options"
+    elif [ -n "$branch" ]; then
         print_success "Repository '$name' added successfully"
         print_info "Repository Details" "URL: $url | Target: $target | Branch: $branch"
+    elif [ -n "$clone_options" ]; then
+        print_success "Repository '$name' added successfully"
+        print_info "Repository Details" "URL: $url | Target: $target | Options: $clone_options"
     else
         print_success "Repository '$name' added successfully"
         print_info "Repository Details" "URL: $url | Target: $target"
