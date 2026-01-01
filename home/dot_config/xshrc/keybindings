@@ -4,7 +4,13 @@
 # Similar to oh-my-zsh sudo plugin but for copying commands
 copy-current-command() {
     # Get the current command line content
-    local current_command="${BUFFER}"
+    # Use BUFFER for Zsh, READLINE_LINE for Bash
+    local current_command
+    if [[ -n "$ZSH_VERSION" ]]; then
+        current_command="${BUFFER}"
+    else
+        current_command="${READLINE_LINE}"
+    fi
 
     # If current command is empty, use the last command from history
     if [[ -z "$current_command" ]]; then
