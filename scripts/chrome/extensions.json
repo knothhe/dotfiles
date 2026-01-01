@@ -47,11 +47,11 @@
     },
     {
       "name": "copy-enhancer",
-      "url": "https://github.com/knothhe/copy-enhancer/releases/download/v0.1.2/copy-enhancer-0.1.2-chrome.zip",
+      "url": "https://github.com/knothhe/copy-enhancer/releases/download/v0.1.3/copy-enhancer-0.1.3-chrome.zip",
       "description": "A browser extension that adds quick copy buttons to posts on X.com, Twitter, and linux.do",
       "checksum": {
         "algorithm": "sha256",
-        "hash": "dbc2ba90f9f82409b88a64e1cf70e9b04284f1d86fa1c0caa3e65e6f2271359f"
+        "hash": "66c6d7aa93a4e424e2035535032ac98aff4741fb23d885dbeb3f1c8cfe65a05c"
       }
     }
   ]
