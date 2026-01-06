@@ -9,6 +9,10 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS (Darwin)
     export PATH="$HOME/.local/xbin/darwin/:$PATH"
 fi
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    # Linux
+    export PATH="$HOME/.local/xbin/linux/:$PATH"
+fi
 
 # tobi try
 export TRY_PATH=~/Workspace/Tries
