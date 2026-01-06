@@ -646,10 +646,38 @@ handle_new_entry() {
     # If special entry was selected, ask for new entry name
     if [ "$entry" = "$CREATE_NEW_ENTRY_MARKER" ]; then
         echo -e "${BLUE}┌${NC} ${BOLD}Enter new entry name${NC}"
-        echo -e "${BLUE}└${NC} Example: ${YELLOW}websites/github.com${NC} or ${YELLOW}email/personal${NC}"
+        echo -e "${BLUE}└${NC} Similar entries will be shown below as you type${NC}"
         echo
-        echo -e "${BLUE}New entry name:${NC}"
-        read -r entry_input
+
+        local new_entry_placeholder="<TYPE NEW ENTRY NAME>"
+
+        entry_input=$(
+            {
+                echo "$new_entry_placeholder"
+                get_password_entries
+            } | fzf \
+                --prompt="New entry name: " \
+                --print-query \
+                --preview="
+                    if echo '{}' | grep -q '$new_entry_placeholder'; then
+                        echo 'Start typing to see similar entries...'
+                    else
+                        echo 'Selected: {}'
+                        if [ -f \"${PASSWORD_STORE_DIR}/{}.gpg\" ]; then
+                            echo
+                            echo '⚠️  This entry already exists!'
+                            echo 'Choose a unique name or edit the query.'
+                        fi
+                    fi
+                " \
+                --preview-window=down:4:wrap \
+                --height=25% \
+                --header="Tab: edit query | Enter: confirm" \
+                --layout=reverse
+        )
+
+        # Get actual input (first line is the query content)
+        entry_input=$(echo "$entry_input" | head -1)
 
         if [ -z "$entry_input" ]; then
             print_warning "No entry name provided"
