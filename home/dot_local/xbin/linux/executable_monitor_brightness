@@ -1,18 +1,52 @@
 #!/bin/bash
 
 STEP=10  # Adjustment step, can be changed to 5 or 15
+CACHE_FILE="/tmp/monitor_brightness_cache"
+CACHE_VALID_TIME=60  # Cache validity in seconds
 
-if [[ "$1" == "up" ]]; then
-    ddcutil setvcp 10 + $STEP
-elif [[ "$1" == "down" ]]; then
-    ddcutil setvcp 10 - $STEP
+# Try to get current brightness from cache first
+if [[ -f "$CACHE_FILE" ]]; then
+    cached_time=$(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0)
+    current_time=$(date +%s)
+    cache_age=$((current_time - cached_time))
+
+    if (( cache_age < CACHE_VALID_TIME )); then
+        current=$(cat "$CACHE_FILE")
+    else
+        # Cache expired, read actual value
+        current=$(ddcutil getvcp 10 | grep -oP 'current value =\s*\K\d+')
+    fi
+else
+    # No cache, read actual value
+    current=$(ddcutil getvcp 10 | grep -oP 'current value =\s*\K\d+')
 fi
 
-# Get current brightness (assuming single monitor, or default to first one)
-current=$(ddcutil getvcp 10 | grep -oP 'current value =\s*\K\d+')
+# Calculate new brightness
+if [[ "$1" == "up" ]]; then
+    new_current=$((current + STEP))
+elif [[ "$1" == "down" ]]; then
+    new_current=$((current - STEP))
+else
+    exit 0
+fi
+
+# Clamp to valid range 0-100
+if (( new_current > 100 )); then
+    new_current=100
+elif (( new_current < 0 )); then
+    new_current=0
+fi
+
+# Update cache
+echo "$new_current" > "$CACHE_FILE"
+
+# Set new brightness (only if changed)
+if (( new_current != current )); then
+    ddcutil setvcp 10 $new_current &
+fi
 
 # Convert to 0.0-1.0 range for swayosd-client
-progress=$(awk "BEGIN {printf \"%.2f\", $current / 100}")
+progress=$(awk "BEGIN {printf \"%.2f\", $new_current / 100}")
 
-# Show OSD (circular progress bar with icon and text)
-swayosd-client --custom-progress $progress --custom-icon display-brightness --custom-progress-text "$current%"
+# Show OSD immediately (without waiting for ddcutil)
+swayosd-client --custom-progress $progress --custom-icon display-brightness --custom-progress-text "$new_current%"
