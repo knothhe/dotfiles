@@ -658,18 +658,20 @@ handle_new_entry() {
             } | fzf \
                 --prompt="New entry name: " \
                 --print-query \
-                --preview="
-                    if echo '{}' | grep -q '$new_entry_placeholder'; then
-                        echo 'Start typing to see similar entries...'
+                --preview='
+                    placeholder="<TYPE NEW ENTRY NAME>"
+                    selected="{}"
+                    if echo "$selected" | grep -qF "$placeholder"; then
+                        echo "Start typing to see similar entries..."
                     else
-                        echo 'Selected: {}'
-                        if [ -f \"${PASSWORD_STORE_DIR}/{}.gpg\" ]; then
+                        echo "Selected: $selected"
+                        if [ -f "${PASSWORD_STORE_DIR}/${selected}.gpg" ]; then
                             echo
-                            echo '⚠️  This entry already exists!'
-                            echo 'Choose a unique name or edit the query.'
+                            echo "⚠️  This entry already exists!"
+                            echo "Choose a unique name or edit the query."
                         fi
                     fi
-                " \
+                ' \
                 --preview-window=down:4:wrap \
                 --height=25% \
                 --header="Tab: edit query | Enter: confirm" \
