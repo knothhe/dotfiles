@@ -1,0 +1,21 @@
+#!/bin/bash
+
+STEP=10  # Adjustment step, can be changed to 5 or 15
+
+if [[ "$1" == "up" ]]; then
+    ddcutil setvcp 10 + $STEP
+elif [[ "$1" == "down" ]]; then
+    ddcutil setvcp 10 - $STEP
+fi
+
+# Get current brightness (assuming single monitor, or default to first one)
+current=$(ddcutil getvcp 10 | grep -oP 'current value =\s*\K\d+')
+
+# Convert to 0.0-1.0 range for swayosd-client
+progress=$(awk "BEGIN {printf \"%.2f\", $current / 100}")
+
+# Show OSD (circular progress bar with icon and text)
+swayosd-client --custom-progress $progress --custom-icon display-brightness
+
+# Optional: notification text
+# swayosd-client --custom-progress $progress --custom-progress-text "Brightness: $current%"
