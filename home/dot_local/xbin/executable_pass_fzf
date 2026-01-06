@@ -658,6 +658,7 @@ handle_new_entry() {
             } | fzf \
                 --prompt="New entry name: " \
                 --print-query \
+                --bind='tab:replace-query' \
                 --preview='
                     placeholder="<TYPE NEW ENTRY NAME>"
                     selected="{}"
@@ -665,6 +666,7 @@ handle_new_entry() {
                         echo "Start typing to see similar entries..."
                     else
                         echo "Selected: $selected"
+                        echo "Press Tab to copy to input line for editing"
                         if [ -f "${PASSWORD_STORE_DIR}/${selected}.gpg" ]; then
                             echo
                             echo "⚠️  This entry already exists!"
@@ -672,9 +674,9 @@ handle_new_entry() {
                         fi
                     fi
                 ' \
-                --preview-window=down:4:wrap \
+                --preview-window=down:5:wrap \
                 --height=25% \
-                --header="Tab: edit query | Enter: confirm" \
+                --header="Tab: copy to query | Enter: confirm | Esc: cancel" \
                 --layout=reverse
         )
 
