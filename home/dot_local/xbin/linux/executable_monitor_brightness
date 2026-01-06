@@ -15,7 +15,4 @@ current=$(ddcutil getvcp 10 | grep -oP 'current value =\s*\K\d+')
 progress=$(awk "BEGIN {printf \"%.2f\", $current / 100}")
 
 # Show OSD (circular progress bar with icon and text)
-swayosd-client --custom-progress $progress --custom-icon display-brightness
-
-# Optional: notification text
-# swayosd-client --custom-progress $progress --custom-progress-text "Brightness: $current%"
+swayosd-client --custom-progress $progress --custom-icon display-brightness --custom-progress-text "$current%"
