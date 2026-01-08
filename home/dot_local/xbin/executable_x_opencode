@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# OpenCode launcher script with Obsidian workspace
+# Usage: x_opencode [args] - Launches opencode in ~/Workspace/Obsidian
+
+set -e
+
+# Source common functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common_functions.sh"
+
+# Ensure PATH includes pnpm
+export PATH="$HOME/.local/share/pnpm:$PATH"
+
+WORK_DIR="$HOME/Workspace/Obsidian"
+
+# Check if workspace directory exists
+if [ ! -d "$WORK_DIR" ]; then
+    print_error "Workspace directory not found: $WORK_DIR"
+    exit 1
+fi
+
+# Check if opencode command exists
+if ! command -v opencode &> /dev/null; then
+    print_error "opencode command not found in PATH"
+    exit 1
+fi
+
+# Execute opencode with the specified working directory
+cd "$WORK_DIR"
+opencode "$@"
