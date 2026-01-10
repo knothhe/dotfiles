@@ -1,0 +1,305 @@
+#!/bin/bash
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [ -f "$SCRIPT_DIR/common_functions.sh" ]; then
+    source "$SCRIPT_DIR/common_functions.sh"
+fi
+
+DEFAULT_SOURCE_DIR="~/Workspace/Secrets/source"
+DEFAULT_ENCRYPT_DIR="~/Workspace/Secrets/encrypt"
+DEFAULT_DECRYPT_DIR="~/Workspace/Secrets/decrypt"
+GPG_EMAIL="{{ .email }}"
+
+usage() {
+    cat << EOF
+Usage: $(basename "$0") <command> [options]
+
+Commands:
+    encrypt    Encrypt files/directories
+    decrypt    Decrypt files/directories
+
+Encrypt Options:
+    -s, --source     Source directory (default: $DEFAULT_SOURCE_DIR)
+    -o, --output    Output directory (default: $DEFAULT_ENCRYPT_DIR)
+    -f, --file      Specific file to encrypt (optional)
+    -r, --remove    Remove original files after encryption (default: false)
+
+Decrypt Options:
+    -s, --source    Source directory (default: $DEFAULT_ENCRYPT_DIR)
+    -o, --output   Output directory (default: $DEFAULT_DECRYPT_DIR)
+    -f, --file     Specific file to decrypt (optional)
+    -r, --remove   Remove encrypted files after decryption (default: false)
+
+Examples:
+    $(basename "$0") encrypt                           # Encrypt all files from default source
+    $(basename "$0") encrypt -s ~/my/files             # Encrypt from custom source
+    $(basename "$0") encrypt -f secret.txt             # Encrypt specific file
+    $(basename "$0") decrypt                           # Decrypt all files from default source
+    $(basename "$0") decrypt -s ~/encrypted -o ~/out    # Custom source and output
+
+EOF
+    exit 1
+}
+
+expand_path() {
+    echo "$1" | sed "s|^~|$HOME|"
+}
+
+ensure_directory() {
+    local dir="$1"
+    local expanded_dir
+    expanded_dir=$(expand_path "$dir")
+
+    if [ ! -d "$expanded_dir" ]; then
+        mkdir -p "$expanded_dir"
+    fi
+    echo "$expanded_dir"
+}
+
+validate_directory() {
+    local dir="$1"
+    local expanded_dir
+    expanded_dir=$(expand_path "$dir")
+
+    if [ ! -d "$expanded_dir" ]; then
+        print_error "Directory does not exist: $expanded_dir"
+        return 1
+    fi
+    echo "$expanded_dir"
+}
+
+validate_file() {
+    local file="$1"
+    local expanded_file
+    expanded_file=$(expand_path "$file")
+
+    if [ ! -f "$expanded_file" ]; then
+        print_error "File does not exist: $expanded_file"
+        return 1
+    fi
+    echo "$expanded_file"
+}
+
+check_gpg() {
+    if ! command -v gpg >/dev/null 2>&1; then
+        print_error "GPG is not installed"
+        return 1
+    fi
+}
+
+encrypt_file() {
+    local input_file="$1"
+    local output_dir="$2"
+    local remove_original="${3:-false}"
+
+    local expanded_input
+    expanded_input=$(expand_path "$input_file")
+    local expanded_output
+    expanded_output=$(expand_path "$output_dir")
+
+    local filename
+    filename=$(basename "$expanded_input")
+    local output_file="$expanded_output/${filename}.asc"
+
+    print_progress "Encrypting: $filename"
+
+    if gpg --quiet --batch --yes --recipient "$GPG_EMAIL" --encrypt --output "$output_file" "$expanded_input" 2>/dev/null; then
+        print_success "Encrypted: $filename -> ${filename}.asc"
+
+        if [ "$remove_original" = "true" ]; then
+            rm -f "$expanded_input"
+            print_info "Removed original" "$filename"
+        fi
+    else
+        print_error "Failed to encrypt: $filename"
+        return 1
+    fi
+}
+
+decrypt_file() {
+    local input_file="$1"
+    local output_dir="$2"
+    local remove_original="${3:-false}"
+
+    local expanded_input
+    expanded_input=$(expand_path "$input_file")
+    local expanded_output
+    expanded_output=$(expand_path "$output_dir")
+
+    local filename
+    filename=$(basename "$expanded_input")
+    local output_file="$expanded_output/${filename%.asc}"
+
+    print_progress "Decrypting: $filename"
+
+    if gpg --quiet --batch --yes --decrypt --output "$output_file" "$expanded_input" 2>/dev/null; then
+        print_success "Decrypted: $filename -> ${filename%.asc}"
+
+        if [ "$remove_original" = "true" ]; then
+            rm -f "$expanded_input"
+            print_info "Removed original" "$filename"
+        fi
+    else
+        print_error "Failed to decrypt: $filename"
+        return 1
+    fi
+}
+
+cmd_encrypt() {
+    local source_dir="$DEFAULT_SOURCE_DIR"
+    local output_dir="$DEFAULT_ENCRYPT_DIR"
+    local specific_file=""
+    local remove_original="false"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -s|--source)
+                source_dir="$2"
+                shift 2
+                ;;
+            -o|--output)
+                output_dir="$2"
+                shift 2
+                ;;
+            -f|--file)
+                specific_file="$2"
+                shift 2
+                ;;
+            -r|--remove)
+                remove_original="true"
+                shift
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                usage
+                ;;
+        esac
+    done
+
+    check_gpg || exit 1
+
+    print_title "GPG Encryption"
+    print_info "Source" "$source_dir"
+    print_info "Output" "$output_dir"
+    print_info "Recipient" "$GPG_EMAIL"
+    echo
+
+    local expanded_source
+    expanded_source=$(validate_directory "$source_dir") || exit 1
+    local expanded_output
+    expanded_output=$(ensure_directory "$output_dir")
+
+    if [ -n "$specific_file" ]; then
+        local expanded_file
+        expanded_file=$(validate_file "$specific_file") || exit 1
+        encrypt_file "$expanded_file" "$expanded_output" "$remove_original"
+    else
+        local count=0
+        while IFS= read -r -d '' file; do
+            encrypt_file "$file" "$expanded_output" "$remove_original"
+            ((count++))
+        done < <(find "$expanded_source" -type f -print0 2>/dev/null)
+
+        if [ "$count" -eq 0 ]; then
+            print_warning "No files found in $source_dir"
+        else
+            print_info "Total files encrypted" "$count"
+        fi
+    fi
+
+    print_completion
+}
+
+cmd_decrypt() {
+    local source_dir="$DEFAULT_ENCRYPT_DIR"
+    local output_dir="$DEFAULT_DECRYPT_DIR"
+    local specific_file=""
+    local remove_original="false"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -s|--source)
+                source_dir="$2"
+                shift 2
+                ;;
+            -o|--output)
+                output_dir="$2"
+                shift 2
+                ;;
+            -f|--file)
+                specific_file="$2"
+                shift 2
+                ;;
+            -r|--remove)
+                remove_original="true"
+                shift
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                usage
+                ;;
+        esac
+    done
+
+    check_gpg || exit 1
+
+    print_title "GPG Decryption"
+    print_info "Source" "$source_dir"
+    print_info "Output" "$output_dir"
+    echo
+
+    local expanded_source
+    expanded_source=$(validate_directory "$source_dir") || exit 1
+    local expanded_output
+    expanded_output=$(ensure_directory "$output_dir")
+
+    if [ -n "$specific_file" ]; then
+        local expanded_file
+        expanded_file=$(validate_file "$specific_file") || exit 1
+        decrypt_file "$expanded_file" "$expanded_output" "$remove_original"
+    else
+        local count=0
+        while IFS= read -r -d '' file; do
+            decrypt_file "$file" "$expanded_output" "$remove_original"
+            ((count++))
+        done < <(find "$expanded_source" -type f -name "*.asc" -print0 2>/dev/null)
+
+        if [ "$count" -eq 0 ]; then
+            print_warning "No .asc files found in $source_dir"
+        else
+            print_info "Total files decrypted" "$count"
+        fi
+    fi
+
+    print_completion
+}
+
+main() {
+    if [ $# -lt 1 ]; then
+        usage
+    fi
+
+    local command="$1"
+    shift
+
+    case "$command" in
+        encrypt)
+            cmd_encrypt "$@"
+            ;;
+        decrypt)
+            cmd_decrypt "$@"
+            ;;
+        -h|--help|help)
+            usage
+            ;;
+        *)
+            print_error "Unknown command: $command"
+            usage
+            ;;
+    esac
+}
+
+main "$@"
