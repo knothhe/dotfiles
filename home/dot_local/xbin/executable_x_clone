@@ -15,7 +15,6 @@ source "$SCRIPT_DIR/common_functions.sh"
 # Repository list format: "name|url|target_directory|branch|clone_options"
 REPOSITORY_LIST=(
     "obsidian|git@github.com:knothhe/obsidian.git|~/Workspace/Obsidian||"
-    "guanglai-secrets|git@github.com:knothhe/guanglai-secrets.git|~/Workspace/Github/knothhe/guanglai-secrets||"
     "guanglai-scripts|git@github.com:knothhe/guanglai-scripts.git|~/Workspace/Github/knothhe/guanglai-scripts||"
     "blog-astro|git@github.com:knothhe/blog-astro.git|~/Workspace/Github/knothhe/blog-astro||"
 )
