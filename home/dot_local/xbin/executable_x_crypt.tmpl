@@ -158,6 +158,10 @@ cmd_encrypt() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -s|--source)
+                if [ -n "$specific_file" ]; then
+                    print_error "Cannot use both -s/--source and -f/--file options"
+                    usage
+                fi
                 source_dir="$2"
                 shift 2
                 ;;
@@ -166,6 +170,10 @@ cmd_encrypt() {
                 shift 2
                 ;;
             -f|--file)
+                if [ -n "$source_dir" ] && [ "$source_dir" != "$DEFAULT_SOURCE_DIR" ]; then
+                    print_error "Cannot use both -f/--file and -s/--source options"
+                    usage
+                fi
                 specific_file="$2"
                 shift 2
                 ;;
@@ -204,7 +212,7 @@ cmd_encrypt() {
     expanded_output=$(ensure_directory "$output_dir")
     while IFS= read -r -d '' file; do
         encrypt_file "$file" "$expanded_output" "$remove_original"
-        ((count++))
+        ((count++)) || true
     done < <(find "$expanded_source" -type f -print0 2>/dev/null)
 
     if [ "$count" -eq 0 ]; then
@@ -226,6 +234,10 @@ cmd_decrypt() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -s|--source)
+                if [ -n "$specific_file" ]; then
+                    print_error "Cannot use both -s/--source and -f/--file options"
+                    usage
+                fi
                 source_dir="$2"
                 shift 2
                 ;;
@@ -234,6 +246,10 @@ cmd_decrypt() {
                 shift 2
                 ;;
             -f|--file)
+                if [ -n "$source_dir" ] && [ "$source_dir" != "$DEFAULT_ENCRYPT_DIR" ]; then
+                    print_error "Cannot use both -f/--file and -s/--source options"
+                    usage
+                fi
                 specific_file="$2"
                 shift 2
                 ;;
@@ -271,7 +287,7 @@ cmd_decrypt() {
     expanded_output=$(ensure_directory "$output_dir")
     while IFS= read -r -d '' file; do
         decrypt_file "$file" "$expanded_output" "$remove_original"
-        ((count++))
+        ((count++)) || true
     done < <(find "$expanded_source" -type f -name "*.asc" -print0 2>/dev/null)
 
     if [ "$count" -eq 0 ]; then
