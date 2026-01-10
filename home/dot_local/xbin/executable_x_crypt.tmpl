@@ -202,8 +202,7 @@ cmd_encrypt() {
         local expanded_output
         expanded_output=$(ensure_directory "$output_dir")
         encrypt_file "$expanded_file" "$expanded_output" "$remove_original"
-        print_completion
-        return 0
+        return $?
     fi
 
     local expanded_source
@@ -221,7 +220,6 @@ cmd_encrypt() {
         print_info "Total files encrypted" "$count"
     fi
 
-    print_completion
 }
 
 cmd_decrypt() {
@@ -277,8 +275,7 @@ cmd_decrypt() {
         local expanded_output
         expanded_output=$(ensure_directory "$output_dir")
         decrypt_file "$expanded_file" "$expanded_output" "$remove_original"
-        print_completion
-        return 0
+        return $?
     fi
 
     local expanded_source
@@ -296,7 +293,6 @@ cmd_decrypt() {
         print_info "Total files decrypted" "$count"
     fi
 
-    print_completion
 }
 
 main() {
