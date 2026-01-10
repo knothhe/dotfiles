@@ -187,27 +187,29 @@ cmd_encrypt() {
     print_info "Recipient" "$GPG_EMAIL"
     echo
 
+    if [ -n "$specific_file" ]; then
+        local expanded_file
+        expanded_file=$(validate_file "$specific_file") || exit 1
+        local expanded_output
+        expanded_output=$(ensure_directory "$output_dir")
+        encrypt_file "$expanded_file" "$expanded_output" "$remove_original"
+        print_completion
+        return 0
+    fi
+
     local expanded_source
     expanded_source=$(validate_directory "$source_dir") || exit 1
     local expanded_output
     expanded_output=$(ensure_directory "$output_dir")
+    while IFS= read -r -d '' file; do
+        encrypt_file "$file" "$expanded_output" "$remove_original"
+        ((count++))
+    done < <(find "$expanded_source" -type f -print0 2>/dev/null)
 
-    if [ -n "$specific_file" ]; then
-        local expanded_file
-        expanded_file=$(validate_file "$specific_file") || exit 1
-        encrypt_file "$expanded_file" "$expanded_output" "$remove_original"
+    if [ "$count" -eq 0 ]; then
+        print_warning "No files found in $source_dir"
     else
-        local count=0
-        while IFS= read -r -d '' file; do
-            encrypt_file "$file" "$expanded_output" "$remove_original"
-            ((count++))
-        done < <(find "$expanded_source" -type f -print0 2>/dev/null)
-
-        if [ "$count" -eq 0 ]; then
-            print_warning "No files found in $source_dir"
-        else
-            print_info "Total files encrypted" "$count"
-        fi
+        print_info "Total files encrypted" "$count"
     fi
 
     print_completion
@@ -251,27 +253,29 @@ cmd_decrypt() {
     print_info "Output" "$output_dir"
     echo
 
+    if [ -n "$specific_file" ]; then
+        local expanded_file
+        expanded_file=$(validate_file "$specific_file") || exit 1
+        local expanded_output
+        expanded_output=$(ensure_directory "$output_dir")
+        decrypt_file "$expanded_file" "$expanded_output" "$remove_original"
+        print_completion
+        return 0
+    fi
+
     local expanded_source
     expanded_source=$(validate_directory "$source_dir") || exit 1
     local expanded_output
     expanded_output=$(ensure_directory "$output_dir")
+    while IFS= read -r -d '' file; do
+        decrypt_file "$file" "$expanded_output" "$remove_original"
+        ((count++))
+    done < <(find "$expanded_source" -type f -name "*.asc" -print0 2>/dev/null)
 
-    if [ -n "$specific_file" ]; then
-        local expanded_file
-        expanded_file=$(validate_file "$specific_file") || exit 1
-        decrypt_file "$expanded_file" "$expanded_output" "$remove_original"
+    if [ "$count" -eq 0 ]; then
+        print_warning "No .asc files found in $source_dir"
     else
-        local count=0
-        while IFS= read -r -d '' file; do
-            decrypt_file "$file" "$expanded_output" "$remove_original"
-            ((count++))
-        done < <(find "$expanded_source" -type f -name "*.asc" -print0 2>/dev/null)
-
-        if [ "$count" -eq 0 ]; then
-            print_warning "No .asc files found in $source_dir"
-        else
-            print_info "Total files decrypted" "$count"
-        fi
+        print_info "Total files decrypted" "$count"
     fi
 
     print_completion
