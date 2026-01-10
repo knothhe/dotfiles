@@ -153,6 +153,7 @@ cmd_encrypt() {
     local output_dir="$DEFAULT_ENCRYPT_DIR"
     local specific_file=""
     local remove_original="false"
+    local count=0
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -220,6 +221,7 @@ cmd_decrypt() {
     local output_dir="$DEFAULT_DECRYPT_DIR"
     local specific_file=""
     local remove_original="false"
+    local count=0
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
