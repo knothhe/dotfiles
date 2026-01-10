@@ -106,7 +106,7 @@ encrypt_file() {
 
     print_progress "Encrypting: $filename"
 
-    if gpg --quiet --batch --yes --recipient "$GPG_EMAIL" --encrypt --output "$output_file" "$expanded_input" 2>/dev/null; then
+    if gpg --quiet --batch --yes --recipient "$GPG_EMAIL" --armor --encrypt --output "$output_file" "$expanded_input" 2>/dev/null; then
         print_success "Encrypted: $filename -> ${filename}.asc"
 
         if [ "$remove_original" = "true" ]; then
