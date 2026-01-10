@@ -92,58 +92,81 @@ check_gpg() {
 
 encrypt_file() {
     local input_file="$1"
-    local output_dir="$2"
-    local remove_original="${3:-false}"
+    local source_dir="$2"
+    local output_dir="$3"
+    local remove_original="${4:-false}"
 
     local expanded_input
     expanded_input=$(expand_path "$input_file")
     local expanded_output
     expanded_output=$(expand_path "$output_dir")
 
+    local relative_path
+    relative_path="${expanded_input#$source_dir/}"
     local filename
-    filename=$(basename "$expanded_input")
-    local output_file="$expanded_output/${filename}.asc"
+    filename=$(basename "$relative_path")
+    local dir_path
+    dir_path=$(dirname "$relative_path")
+    local output_file_dir="$expanded_output/$dir_path"
 
-    print_progress "Encrypting: $filename"
+    print_progress "Encrypting: $relative_path"
+
+    if [ "$dir_path" != "." ] && [ ! -d "$output_file_dir" ]; then
+        mkdir -p "$output_file_dir"
+    fi
+
+    local output_file="$output_file_dir/${filename}.asc"
 
     if gpg --quiet --batch --yes --recipient "$GPG_EMAIL" --armor --encrypt --output "$output_file" "$expanded_input" 2>/dev/null; then
-        print_success "Encrypted: $filename -> ${filename}.asc"
+        print_success "Encrypted: $relative_path -> ${relative_path}.asc"
 
         if [ "$remove_original" = "true" ]; then
             rm -f "$expanded_input"
-            print_info "Removed original" "$filename"
+            print_info "Removed original" "$relative_path"
         fi
     else
-        print_error "Failed to encrypt: $filename"
+        print_error "Failed to encrypt: $relative_path"
         return 1
     fi
 }
 
 decrypt_file() {
     local input_file="$1"
-    local output_dir="$2"
-    local remove_original="${3:-false}"
+    local source_dir="$2"
+    local output_dir="$3"
+    local remove_original="${4:-false}"
 
     local expanded_input
     expanded_input=$(expand_path "$input_file")
     local expanded_output
     expanded_output=$(expand_path "$output_dir")
 
+    local relative_path
+    relative_path="${expanded_input#$source_dir/}"
     local filename
-    filename=$(basename "$expanded_input")
-    local output_file="$expanded_output/${filename%.asc}"
+    filename=$(basename "$relative_path")
+    local dir_path
+    dir_path=$(dirname "$relative_path")
+    local output_file_dir="$expanded_output/$dir_path"
 
-    print_progress "Decrypting: $filename"
+    print_progress "Decrypting: $relative_path"
+
+    if [ "$dir_path" != "." ] && [ ! -d "$output_file_dir" ]; then
+        mkdir -p "$output_file_dir"
+    fi
+
+    local output_file
+    output_file="$output_file_dir/${filename%.asc}"
 
     if gpg --quiet --batch --yes --decrypt --output "$output_file" "$expanded_input" 2>/dev/null; then
-        print_success "Decrypted: $filename -> ${filename%.asc}"
+        print_success "Decrypted: $relative_path -> $relative_path"
 
         if [ "$remove_original" = "true" ]; then
             rm -f "$expanded_input"
-            print_info "Removed original" "$filename"
+            print_info "Removed original" "$relative_path"
         fi
     else
-        print_error "Failed to decrypt: $filename"
+        print_error "Failed to decrypt: $relative_path"
         return 1
     fi
 }
@@ -201,7 +224,7 @@ cmd_encrypt() {
         expanded_file=$(validate_file "$specific_file") || exit 1
         local expanded_output
         expanded_output=$(ensure_directory "$output_dir")
-        encrypt_file "$expanded_file" "$expanded_output" "$remove_original"
+        encrypt_file "$expanded_file" "$expanded_source" "$expanded_output" "$remove_original"
         return $?
     fi
 
@@ -210,7 +233,7 @@ cmd_encrypt() {
     local expanded_output
     expanded_output=$(ensure_directory "$output_dir")
     while IFS= read -r -d '' file; do
-        encrypt_file "$file" "$expanded_output" "$remove_original"
+        encrypt_file "$file" "$expanded_source" "$expanded_output" "$remove_original"
         ((count++)) || true
     done < <(find "$expanded_source" -type f -print0 2>/dev/null)
 
@@ -274,7 +297,7 @@ cmd_decrypt() {
         expanded_file=$(validate_file "$specific_file") || exit 1
         local expanded_output
         expanded_output=$(ensure_directory "$output_dir")
-        decrypt_file "$expanded_file" "$expanded_output" "$remove_original"
+        decrypt_file "$expanded_file" "$expanded_source" "$expanded_output" "$remove_original"
         return $?
     fi
 
@@ -283,7 +306,7 @@ cmd_decrypt() {
     local expanded_output
     expanded_output=$(ensure_directory "$output_dir")
     while IFS= read -r -d '' file; do
-        decrypt_file "$file" "$expanded_output" "$remove_original"
+        decrypt_file "$file" "$expanded_source" "$expanded_output" "$remove_original"
         ((count++)) || true
     done < <(find "$expanded_source" -type f -name "*.asc" -print0 2>/dev/null)
 
