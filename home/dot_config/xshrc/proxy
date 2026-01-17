@@ -51,6 +51,7 @@ proxyon() {
   export RSYNC_PROXY="${proxy_url}"
   export ALL_PROXY="${proxy_url}"
   export NO_PROXY="localhost,127.0.0.1,*.local"
+  export NO_PROXY="${NO_PROXY},*.bigmodel.cn,*.minimaxi.com"
 
   echo "✅ Proxy activated for CLI tools."
   echo "   Address: ${proxy_host_port}"
