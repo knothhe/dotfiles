@@ -1,4 +1,3 @@
 # alias
 alias trm='trash'
-alias cmt='opencode -m opencode/minimax-m2.1-free run "commit"'
-
+alias cmt='opencode -m minimax-cn/MiniMax-M2.1 run --command commit'
