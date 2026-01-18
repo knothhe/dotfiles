@@ -2,6 +2,7 @@
 
 # alias
 alias copy="wl-copy"
+alias pacmancn='sudo pacman --config /etc/pacman.d/archlinuxcn'
 alias zed="zeditor"
 
 # ssh
@@ -19,13 +20,12 @@ if ! ssh-add -l &>/dev/null; then
 fi
 
 # x_update function - prompt and execute system update with proxy management
-x_update() {
-  echo "This will execute: proxyoff && sudo pacman -Syu && proxyon && omarchy-update"
-  echo "The system will be updated and proxy settings will be temporarily disabled."
+x_omarchy_update() {
+  echo "This will execute: proxyon && omarchy-update && proxyoff && pacman -Syu --config /etc/pacman.d/archlinuxcn"
   read -p "Do you want to continue? (y/N): " -n 1 -r
   echo
   if [[ $REPLY =~ ^[Yy]$ ]]; then
-    proxyoff && sudo pacman -Syu && proxyon && omarchy-update
+    proxyon && omarchy-update && proxyoff && sudo pacman -Syu --config /etc/pacman.d/archlinuxcn
   else
     echo "Update cancelled."
   fi
