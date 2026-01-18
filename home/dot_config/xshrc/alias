@@ -1,2 +1,4 @@
 # alias
 alias trm='trash'
+alias cmt='opencode -m opencode/minimax-m2.1-free run "commit"'
+
