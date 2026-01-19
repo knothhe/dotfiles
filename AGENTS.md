@@ -34,21 +34,6 @@ All scripts source this shared library for consistent UI:
 3. **Never duplicate existing functionality** - use functions from `common_functions.sh` instead
 4. **Check `common_functions.sh` first** before writing any utility functions
 
-##### Available Functions (non-exhaustive):
-- **UI/Formatting**: `print_title()`, `print_success()`, `print_error()`, `print_warning()`, `print_progress()`, `print_completion()`, `print_header()`, `print_highlight()`, `print_success_bold()`, `print_colored_text()`
-- **File/Directory**: `ensure_directory()`, `validate_file()`, `expand_path()`, `check_directory_exists()`, `create_temp_file()`, `create_temp_file_with_cleanup()`
-- **Dependencies**: `check_dependencies()`, `check_clipboard_tools()`
-- **Array/Data**: `array_contains()`, `array_get_index()`, `parse_config()`, `read_file_to_array()`
-- **OS Detection**: `detect_os()`, `is_darwin()`, `is_linux()`, `get_os_info()`, `get_os_specific_path()`
-- **User Input**: `confirm_action()`, `prompt_input()`, `wait_for_user()`
-- **Clipboard**: `copy_to_clipboard()`, `get_from_clipboard()`
-- **Git**: `git_sync()` (for repository synchronization)
-
-##### Color Constants:
-- **Colors**: `$GREEN`, `$RED`, `$YELLOW`, `$BLUE`, `$CYAN`, `$MAGENTA`, `$WHITE`
-- **Bold Colors**: `$BOLD`, `$GREEN_BOLD`, `$RED_BOLD`, `$YELLOW_BOLD`, `$BLUE_BOLD`, `$CYAN_BOLD`
-- **Reset**: `$NC` (No Color)
-
 ##### Before Writing Custom Code:
 1. **Search `common_functions.sh`** for existing functionality
 2. **Use existing functions** instead of writing custom implementations
@@ -70,19 +55,6 @@ All scripts source this shared library for consistent UI:
 - Provide simple INFO/WARNING/ERROR messages for clarity
 
 **Design Rationale**: Package installation scripts may run in bootstrap environments where the full `common_functions.sh` library is not yet available. These scripts prioritize reliability and minimal dependencies over UI consistency.
-
-### Sync Utilities Architecture
-- **`git_sync`** - Generic git repository sync (auto-pull, add, commit, push)
-- **Specialized syncs** (`pass_sync`, `ob_sync`, `rime_sync`) - Wrap `git_sync` for specific repositories
-- **`x_sync`** - Master orchestrator that runs multiple syncs in sequence
-- **`x_clone`** - Interactive repository cloning tool with branch support
-- **`x_pic`** - Cross-platform clipboard image management and upload tool
-- **`pass_fzf`** - Interactive password selection and generation with fzf integration
-- **`x_sharding`** - Database table sharding tool for SQL schema transformation
-- **`x_launchagent`** (macOS) - LaunchAgent management utility
-- **`x_opencode`** - OpenCode launcher with Obsidian workspace integration
-- **`Makefile`** - Build automation for common setup tasks (Chrome extensions, package installation, LazyVim)
-- All use `common_functions.sh` for consistent output and error handling
 
 ## Development Commands
 
@@ -111,7 +83,7 @@ proxyinfo
 - `Makefile` - Root-level build automation with convenient targets for common setup tasks
 - Chrome extension download and management targets
 - Platform-specific package installation (Arch Linux pacman/yay, Flatpak, macOS)
-- Global package installation (PicList via pnpm)
+- Global package installation (PicList, AI tools via pnpm)
 - Development environment setup (LazyVim installation)
 - System service management (skhd for macOS)
 - Window manager configuration (Hyprland source addition)
