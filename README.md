@@ -8,7 +8,7 @@ A comprehensive dotfiles repository providing automated setup, synchronization u
 
 - **🔧 Shell Environment**: Modular bash/zsh configuration with proxy management
 - **🔄 Git Synchronization**: Auto-sync utilities for pass, Obsidian, Rime, and general repos
-- **🤖 AI Integration**: Pre-configured Claude Code environment (BigModel primary)
+- **🤖 AI Integration**: Pre-configured Claude Code and OpenCode environments (BigModel primary)
 - **🖼️ Image Tools**: Clipboard image management and cloud upload (x_pic)
 - **🔐 Password Management**: Interactive fzf-based password interface (pass_fzf)
 - **⌨️ Input Methods**: Complete fcitx5 configuration with Catppuccin theme
@@ -16,6 +16,7 @@ A comprehensive dotfiles repository providing automated setup, synchronization u
 - **📦 Package Management**: Automated installation via Makefile
 - **🔑 SSH Management**: Encrypted key storage for multiple services
 - **🎨 Development**: LazyVim, Hyprland/skhd, and tool configurations
+- **🤖 AI Tools**: OpenCode launcher with Obsidian workspace integration
 
 ## 📁 Structure
 
@@ -29,7 +30,9 @@ dotfiles/
 │   │   ├── fcitx5/          # Linux input method
 │   │   ├── hypr/            # Hyprland WM config
 │   │   ├── nvim/            # Neovim/LazyVim
-│   │   └── skhd/            # macOS window manager
+│   │   ├── skhd/            # macOS window manager
+│   │   ├── opencode/        # OpenCode configuration
+│   │   └── agents/          # Global AI agent guidelines
 │   ├── dot_local/xbin/      # Custom scripts & utilities
 │   ├── private_dot_*        # Encrypted configs (SSH, GPG)
 │   └── dot_claude/          # Claude Code setup
@@ -69,6 +72,7 @@ x_clone        # Interactive repo cloning
 x_pic          # Clipboard image management
 pass_fzf       # Interactive password manager
 x_sharding     # Database table sharding tool
+x_opencode     # OpenCode launcher
 ```
 
 ### Build Automation
@@ -94,7 +98,7 @@ proxyinfo                               # Check status
 ### Shell Environment
 - **Modular structure**: Configuration in `~/.config/xshrc/` with separate components
 - **Cross-platform**: Automatic OS detection and platform-specific settings
-- **AI Integration**: Pre-configured Claude Code with BigModel primary
+- **AI Integration**: Pre-configured Claude Code and OpenCode with BigModel primary
 
 ### Template Usage
 ```bash
@@ -120,6 +124,7 @@ chezmoi add --template ~/.config/xshrc/envs
 - **`x_clone`**: Interactive repository cloning with branch support
 - **`x_sharding`**: Database table sharding tool for SQL schema transformation
 - **`x_sync`**: Master synchronization orchestrator
+- **`x_opencode`**: OpenCode launcher with Obsidian workspace integration
 - **`x_launchagent`** (macOS): LaunchAgent management utility
 - **`common_functions.sh`**: Shared utility library for all scripts
 
@@ -134,8 +139,8 @@ chezmoi add --template ~/.config/xshrc/envs
 
 **Required**: Chezmoi, Git, Bash/Zsh
 
-**Optional**: Pass, Fzf, Pwgen, Fcitx5, Ghostty, LazyVim, Skhd/Hyprland
+**Optional**: Pass, Fzf, Pwgen, Fcitx5, Ghostty, LazyVim, Skhd/Hyprland, OpenCode
 
 ## 📚 Documentation
 
-See `CLAUDE.md` for detailed development guidance and API documentation for custom utilities.
+See `AGENTS.md` for detailed development guidance and API documentation for custom utilities.

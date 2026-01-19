@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI AGENTS when working with code in this repository.
 
 ## Repository Overview
 
@@ -80,6 +80,7 @@ All scripts source this shared library for consistent UI:
 - **`pass_fzf`** - Interactive password selection and generation with fzf integration
 - **`x_sharding`** - Database table sharding tool for SQL schema transformation
 - **`x_launchagent`** (macOS) - LaunchAgent management utility
+- **`x_opencode`** - OpenCode launcher with Obsidian workspace integration
 - **`Makefile`** - Build automation for common setup tasks (Chrome extensions, package installation, LazyVim)
 - All use `common_functions.sh` for consistent output and error handling
 
@@ -106,44 +107,6 @@ proxyoff
 proxyinfo
 ```
 
-### Configuration Files
-- `home/dot_config/xshrc/` - Shell configuration and environment files (modular structure)
-  - `rc` - Main shell configuration loader that sources all components
-  - `envs` - Environment variables (Claude Code, XDG paths, PATH)
-  - `alias` - Shell aliases for common commands
-  - `functions` - Custom shell functions
-  - `proxy` - Proxy management functions
-  - `keybindings` - Shell-specific key mappings and bindings
-  - `darwin` - macOS-specific configuration
-  - `linux` - Linux-specific configuration
-  - `tmpl.tmpl` - Template configuration file
-- `home/dot_config/git/` - Git configuration
-  - `config.tmpl` - Main git configuration template
-  - `config_dev` - Development-specific git configuration
-- `home/dot_config/ghostty/` - Terminal emulator configuration
-  - `config.tmpl` - Ghostty settings with CJK support and cross-platform optimization
-- `home/dot_config/fcitx5/` - Linux input method configuration
-- `home/dot_config/hypr/` - Hyprland window manager configuration
-  - `bindings.conf` - Key bindings configuration
-  - `custom.conf` - Custom Hyprland settings
-- `home/dot_config/x-export/` - Export configuration files
-- `home/dot_config/fontconfig/` - Font configuration
-- `home/dot_config/starship.toml` - Starship prompt configuration
-- `home/dot_config/skhd/skhdrc` - macOS window management configuration
-- `home/dot_config/nvim/` - Neovim configuration (LazyVim integration)
-  - `lua/config/` - Configuration files
-  - `lua/plugins/` - Plugin configurations
-- `home/dot_ideavimrc` - IntelliJ IDEA Vim configuration
-- `home/.chezmoi.toml.tmpl` - Main chezmoi configuration template
-- `home/private_dot_gnupg/` - GPG configuration files
-- `home/private_dot_ssh/` - SSH configuration and encrypted keys
-- `home/dot_claude/` - Claude Code configuration and custom commands
-- `home/dot_local/share/private_fcitx5/` - Fcitx5 themes and assets
-- `home/dot_piclist/` - PicList image uploader configuration
-- Template files use `.tmpl` suffix
-- Environment-specific configs use chezmoi variables
-- Shell configuration is modularized into separate components for better maintainability
-
 ### Build Automation
 - `Makefile` - Root-level build automation with convenient targets for common setup tasks
 - Chrome extension download and management targets
@@ -153,25 +116,6 @@ proxyinfo
 - System service management (skhd for macOS)
 - Window manager configuration (Hyprland source addition)
 - Help target for discovering available commands
-
-### Scripts Organization
-- `scripts/chrome/` - Chrome extension management
-  - `download_extension.sh` - Automated Chrome extension downloader
-  - `extensions.json` - Extension definitions
-- `scripts/darwin/` - macOS-specific setup
-  - `install_packages.sh` - Package installation script
-  - `darwin.brews`, `darwin.casks` - Package definitions
-- `scripts/arch/` - Arch Linux packages
-  - `install_pacman.sh` - Pacman package installation
-  - `install_yay.sh` - Yay AUR helper installation
-  - `pacman.packages`, `pacman_extra.packages`, `yay.packages` - Package lists
-- `scripts/linux/` - Linux utilities
-  - `install_flatpak.sh` - Flatpak installation
-  - `add_hypr_source.sh` - Hyprland configuration helper
-- `scripts/tampermonkey/` - Browser user scripts
-- `scripts/install_lazyvim.sh` - LazyVim setup script
-- `docs/` - Documentation for custom utilities
-  - `x_launchagent.md`, `x_sharding.md`
 
 ## File Structure Conventions
 
@@ -194,7 +138,6 @@ proxyinfo
 
 ### File Exclusions
 - `.chezmoiignore` excludes sensitive directories and files
-- `.ssh/` directory ignored for security
 - Personal history files excluded
 
 ## Cross-Platform Support
@@ -208,9 +151,7 @@ proxyinfo
 - `rime_sync.tmpl` has different implementations for macOS (Squirrel) and Linux (Fcitx5)
 - Shell configuration paths vary by platform (.zshrc vs .bashrc)
 - OS-specific shell configs: `darwin` and `linux` files in xshrc directory
-- **Linux input method support**: Complete fcitx5 configuration with Catppuccin theme
 - **Shell configuration restructured**: Moved from `dot_config/dot_xshrc/` to `dot_config/xshrc/` with modular components
-- **Terminal emulator**: Ghostty configuration with platform-specific font sizing and CJK support
 - **Package management**: Platform-specific installation scripts for Arch Linux, Flatpak, and macOS
 - **Window management**:
   - skhd integration for macOS tiling window management
@@ -228,52 +169,9 @@ proxyinfo
 ### Function Modularity
 - Reusable functions in `common_functions.sh`
 - Generic `git_sync` function reused by specialized scripts
-- Master `x_sync` orchestrates multiple operations
-- Interactive `x_clone` provides repository management with selection UI
-- **Password management**: `pass_fzf` provides comprehensive password interface with generation options
-- **Image processing**: `x_pic` handles cross-platform clipboard image extraction and upload
 
 ### Template Variables
 - Available variables: `.chezmoi.os`, `.chezmoi.arch`, `.chezmoi.username`, `.chezmoi.hostname`
 - Use `chezmoi data` get all variable
 - Used for conditional configuration and personalization
 - Enable cross-platform compatibility
-
-## AI Tool Integration
-
-### Claude Code Configuration
-- Pre-configured in `dot_config/xshrc/envs`
-- Supports multiple AI providers (Anthropic, BigModel, Moonshot)
-- Environment variables for API endpoints and model selection
-- Token management via password manager
-- **Primary provider: BigModel** (glm-4.5) with Moonshot AI fallback
-- Custom slash commands in `home/dot_claude/commands/` for enhanced workflow
-
-### Custom Claude Commands
-- `/commit` - Intelligent git commit generation with conventional commit format
-- Commands are defined in `home/dot_claude/commands/` with markdown format
-- Each command specifies allowed tools and provides structured task guidance
-
-### Model Configuration
-- Primary model: `glm-4.5` (BigModel)
-- Fallback models: `glm-4.5-air` (BigModel), `kimi-k2-turbo-preview` (Moonshot AI)
-- Configurable via environment variables
-
-## Password Management Integration
-
-### Pass + Fzf Interface
-The `pass_fzf` tool provides comprehensive password management:
-- **Interactive selection**: fzf-powered interface for password browsing
-- **Multi-key operations**: Enter (copy), Ctrl+E (edit), Ctrl+G (generate)
-- **Password generation**: Advanced options with custom character classes
-- **Entry creation**: Support for new password entries with validation
-- **Security features**: Automatic clipboard clearing (45 seconds)
-- **Cross-platform**: Works on Linux and macOS with clipboard integration
-- **Customizable**: Support for default password length and symbol preferences
-
-### Dependencies
-- `pass` - Password store core functionality
-- `fzf` - Interactive fuzzy finder
-- `pwgen` - Password generation tool
-- `fd` - Fast file finding for password store traversal
-- `gpg` - Encryption backend for password store
