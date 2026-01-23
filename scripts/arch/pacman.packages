@@ -16,5 +16,6 @@ pwgen
 qt5-tools
 ripgrep
 seahorse
+tmux
 trash-cli
 veracrypt
