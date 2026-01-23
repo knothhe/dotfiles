@@ -8,6 +8,17 @@
       "rm /tmp/*": "allow"
     }
   },
+  "mcp": {
+    "MiniMax": {
+      "type": "local",
+      "command": ["uvx", "minimax-coding-plan-mcp", "-y"],
+      "environment": {
+        "MINIMAX_API_KEY": "{{ pass "token/minimax/codingplan" }}",
+        "MINIMAX_API_HOST": "https://api.minimaxi.com"
+      },
+      "enabled": true
+    }
+  },
   {{- if eq .chezmoi.os "darwin" }}
   "theme": "catppuccin-frappe"
   {{- else if eq .chezmoi.os "linux" }}
