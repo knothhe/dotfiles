@@ -1,1 +1,1 @@
-AGRNTS.md
+AGENTS.md
