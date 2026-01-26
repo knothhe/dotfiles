@@ -33,7 +33,7 @@ install_piclist:
 	@pnpm install -g piclist
 
 install_ai_tools:
-	@pnpm install -g opencode-ai @anthropic-ai/claude-code
+	@pnpm install -g opencode-ai
 
 # LazyVim installation
 install_lazyvim:
@@ -54,7 +54,7 @@ help:
 	@echo "  install_darwin_packages      - Install macOS packages"
 	@echo "  enable_darwin_skhd           - Enable macOS skhd service"
 	@echo "  install_piclist              - Install PicList globally via pnpm"
-	@echo "  install_ai_tools             - Install opencode and claude-code globally via pnpm"
+	@echo "  install_ai_tools             - Install opencode globally via pnpm"
 	@echo "  install_lazyvim              - Install LazyVim Neovim configuration"
 	@echo "  add_hypr_source              - Add custom.conf source to Hyprland config"
 	@echo "  help                         - Show this help"
