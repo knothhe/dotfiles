@@ -1,3 +1,7 @@
 # alias
 alias trm='trash'
 alias cmt='opencode -m minimax-cn/MiniMax-M2.1 run --command commit'
+# tmux
+export TMUX_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/tmux/tmux.conf"
+alias tmux='tmux -f "$TMUX_CONFIG"'
+alias tmuxconfig='$EDITOR "$TMUX_CONFIG"'

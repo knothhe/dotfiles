@@ -6,8 +6,8 @@ source_file() {
     fi
 }
 
-source_file "$HOME/.config/xshrc/alias"
 source_file "$HOME/.config/xshrc/envs"
+source_file "$HOME/.config/xshrc/alias"
 source_file "$HOME/.config/xshrc/functions"
 source_file "$HOME/.config/xshrc/keybindings"
 source_file "$HOME/.config/xshrc/proxy"
