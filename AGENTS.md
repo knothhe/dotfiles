@@ -61,7 +61,7 @@ All scripts source this shared library for consistent UI:
 ### Chezmoi Operations
 ```bash
 chezmoi apply          # Apply all dotfiles
-chezmoi apply ~/.local/xbin/x_pic # Only apply ~/.local/xbin/x_pic in this respository
+chezmoi apply ~/.local/xbin/x_pic # Only apply ~/.local/xbin/x_pic in this respository (use mapped path, not source path)
 chezmoi execute-template .chezmoi/scripts/run_once_setup.sh.tmpl # For test tmpl file
 chezmoi status         # Check status
 chezmoi diff           # Preview changes
@@ -69,6 +69,11 @@ chezmoi edit <file>    # Edit specific file
 chezmoi add <file>     # Add file to management
 chezmoi forget <file>  # Remove from management
 ```
+
+**Important**: When modifying files in `home/` directory, always use the **mapped (target) path** with `chezmoi apply`, not the source path in the repository. For example:
+- Source: `home/dot_local/xbin/x_pic`
+- Mapped path: `~/.local/xbin/x_pic`
+- Command: `chezmoi apply ~/.local/xbin/x_pic`
 
 ### Shell Integration
 ```bash
