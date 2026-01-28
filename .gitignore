@@ -25,7 +25,7 @@ Thumbs.db
 .fish_history
 
 # Claude Code configuration
-.claude/
+.claude/settings.local.json
 .claudeignore
 
 # Common personal files to ignore

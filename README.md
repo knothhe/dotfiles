@@ -17,6 +17,7 @@ A comprehensive dotfiles repository providing automated setup, synchronization u
 - **🔑 SSH Management**: Encrypted key storage for multiple services
 - **🎨 Development**: LazyVim, Hyprland/skhd, and tool configurations
 - **🤖 AI Tools**: OpenCode launcher with Obsidian workspace integration
+- **📚 Agent Skills**: Pre-configured skills for Hyprland development
 
 ## 📁 Structure
 
@@ -140,6 +141,15 @@ chezmoi add --template ~/.config/xshrc/envs
 **Required**: Chezmoi, Git, Bash/Zsh
 
 **Optional**: Pass, Fzf, Pwgen, Fcitx5, Ghostty, LazyVim, Skhd/Hyprland, OpenCode
+
+## 📚 Agent Skills
+
+Pre-configured skills for enhanced AI-assisted development.
+
+### Hyprland Skill
+- **Source**: [tobi/frameling](https://github.com/tobi/frameling/tree/master/.claude/skills/hyprland)
+- **Location**: `.claude/skills/hyprland/`
+- **Description**: Comprehensive Hyprland window manager reference with documentation, examples, and search utilities for configuration, keybindings, animations, window rules, and dispatchers.
 
 ## 📚 Documentation
 
