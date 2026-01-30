@@ -195,8 +195,8 @@ CREATE TABLE `users_000` (
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-CREATE INDEX idx_users_000_email ON `users_000`(email);
-CREATE UNIQUE INDEX idx_users_000_username ON `users_000`(username);
+CREATE INDEX idx_users_email ON `users_000`(email);
+CREATE UNIQUE INDEX idx_users_username ON `users_000`(username);
 
 DROP TABLE IF EXISTS orders_001;
 CREATE TABLE `orders_001` (
@@ -207,8 +207,8 @@ CREATE TABLE `orders_001` (
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-CREATE INDEX idx_orders_001_user_id ON `orders_001`(user_id);
-CREATE INDEX idx_orders_001_status ON `orders_001`(status);
+CREATE INDEX idx_orders_user_id ON `orders_001`(user_id);
+CREATE INDEX idx_orders_status ON `orders_001`(status);
 
 DROP TABLE IF EXISTS users_002;
 CREATE TABLE `users_002` (
@@ -250,8 +250,8 @@ CREATE TABLE `users_000` (
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-CREATE INDEX idx_users_000_email ON `users_000`(email);
-CREATE UNIQUE INDEX idx_users_000_username ON `users_000`(username);
+CREATE INDEX idx_users_email ON `users_000`(email);
+CREATE UNIQUE INDEX idx_users_username ON `users_000`(username);
 
 DROP TABLE IF EXISTS orders_001;
 CREATE TABLE `orders_001` (
@@ -262,8 +262,8 @@ CREATE TABLE `orders_001` (
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-CREATE INDEX idx_orders_001_user_id ON `orders_001`(user_id);
-CREATE INDEX idx_orders_001_status ON `orders_001`(status);
+CREATE INDEX idx_orders_user_id ON `orders_001`(user_id);
+CREATE INDEX idx_orders_status ON `orders_001`(status);
 
 -- Sharded database: shard01
 CREATE DATABASE IF NOT EXISTS `shard01` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -277,8 +277,8 @@ CREATE TABLE `users_002` (
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-CREATE INDEX idx_users_002_email ON `users_002`(email);
-CREATE UNIQUE INDEX idx_users_002_username ON `users_002`(username);
+CREATE INDEX idx_users_email ON `users_002`(email);
+CREATE UNIQUE INDEX idx_users_username ON `users_002`(username);
 
 DROP TABLE IF EXISTS orders_003;
 CREATE TABLE `orders_003` (
@@ -289,8 +289,8 @@ CREATE TABLE `orders_003` (
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-CREATE INDEX idx_orders_003_user_id ON `orders_003`(user_id);
-CREATE INDEX idx_orders_003_status ON `orders_003`(status);
+CREATE INDEX idx_orders_user_id ON `orders_003`(user_id);
+CREATE INDEX idx_orders_status ON `orders_003`(status);
 ```
 
 #### Example 3: Reset Per Database
@@ -309,8 +309,8 @@ CREATE TABLE `users_000` (
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-CREATE INDEX idx_users_000_email ON `users_000`(email);
-CREATE UNIQUE INDEX idx_users_000_username ON `users_000`(username);
+CREATE INDEX idx_users_email ON `users_000`(email);
+CREATE UNIQUE INDEX idx_users_username ON `users_000`(username);
 
 DROP TABLE IF EXISTS orders_001;
 CREATE TABLE `orders_001` (
@@ -321,8 +321,8 @@ CREATE TABLE `orders_001` (
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-CREATE INDEX idx_orders_001_user_id ON `orders_001`(user_id);
-CREATE INDEX idx_orders_001_status ON `orders_001`(status);
+CREATE INDEX idx_orders_user_id ON `orders_001`(user_id);
+CREATE INDEX idx_orders_status ON `orders_001`(status);
 
 -- Sharded database: shard01
 CREATE DATABASE IF NOT EXISTS `shard01` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -336,8 +336,8 @@ CREATE TABLE `users_000` (
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-CREATE INDEX idx_users_000_email ON `users_000`(email);
-CREATE UNIQUE INDEX idx_users_000_username ON `users_000`(username);
+CREATE INDEX idx_users_email ON `users_000`(email);
+CREATE UNIQUE INDEX idx_users_username ON `users_000`(username);
 
 DROP TABLE IF EXISTS orders_001;
 CREATE TABLE `orders_001` (
@@ -348,8 +348,8 @@ CREATE TABLE `orders_001` (
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-CREATE INDEX idx_orders_001_user_id ON `orders_001`(user_id);
-CREATE INDEX idx_orders_001_status ON `orders_001`(status);
+CREATE INDEX idx_orders_user_id ON `orders_001`(user_id);
+CREATE INDEX idx_orders_status ON `orders_001`(status);
 ```
 
 #### Example 4: Selective Table Sharding
