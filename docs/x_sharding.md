@@ -218,8 +218,8 @@ CREATE TABLE `users_002` (
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-CREATE INDEX idx_users_002_email ON `users_002`(email);
-CREATE UNIQUE INDEX idx_users_002_username ON `users_002`(username);
+CREATE INDEX idx_users_email ON `users_002`(email);
+CREATE UNIQUE INDEX idx_users_username ON `users_002`(username);
 
 DROP TABLE IF EXISTS orders_003;
 CREATE TABLE `orders_003` (
@@ -230,8 +230,8 @@ CREATE TABLE `orders_003` (
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-CREATE INDEX idx_orders_003_user_id ON `orders_003`(user_id);
-CREATE INDEX idx_orders_003_status ON `orders_003`(status);
+CREATE INDEX idx_orders_user_id ON `orders_003`(user_id);
+CREATE INDEX idx_orders_status ON `orders_003`(status);
 ```
 
 #### Example 2: Multi-Database Mode (Sequential Numbering)

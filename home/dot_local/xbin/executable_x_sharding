@@ -382,13 +382,7 @@ class ShardingGenerator:
 
     def _generate_index_name(self, original_index_name: str, table_name: str, table_suffix: int) -> str:
         """Generate sharded index name."""
-        # If index name contains table name, replace it with sharded table name
-        if table_name.lower() in original_index_name.lower():
-            sharded_table_name = self.generate_table_name(table_name, table_suffix)
-            return original_index_name.replace(table_name, sharded_table_name)
-        else:
-            # Append suffix to index name
-            return f"{original_index_name}_{self.pad_number(table_suffix, self.table_count)}"
+        return original_index_name
 
 
 def validate_arguments(args: argparse.Namespace) -> None:
