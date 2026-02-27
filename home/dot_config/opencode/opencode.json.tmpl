@@ -22,6 +22,7 @@
   {{- if eq .chezmoi.os "darwin" }}
   "theme": "catppuccin-frappe"
   {{- else if eq .chezmoi.os "linux" }}
-  "theme": "system"
+  "theme": "system",
+  "autoupdate": false
   {{- end }}
 }
