@@ -1,0 +1,10 @@
+#!/bin/bash
+set -e
+
+while true; do
+    dbus-send --session --dest=org.freedesktop.secrets --type=method_call \
+        /org/freedesktop/secrets \
+        org.freedesktop.Secret.Service.Lock \
+        array:objpath:/org/freedesktop/secrets/collection/Default_5fkeyring
+    sleep 60
+done
