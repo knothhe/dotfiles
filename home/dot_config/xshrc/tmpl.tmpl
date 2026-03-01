@@ -7,9 +7,11 @@ chezmoi-cd() {
 cc() {
     local provider=""
     local claude_args=()
+    local export_only=false
 
     if [[ $# -eq 0 ]]; then
         echo "Usage: cc <provider> [claude_code_args...]"
+        echo "       cc --export|-e <provider>   # Export env vars to current shell"
         echo ""
         echo "Providers:"
         echo "  anthropic    Use Anthropic Claude models (aliases: anth)"
@@ -20,9 +22,18 @@ cc() {
         echo "  cc anthropic --model sonnet-4-5"
         echo "  cc bigmodel --help"
         echo "  cc moonshot my_project/"
-        echo "  cc glm --help                    # Same as 'cc bigmodel --help'"
-        echo "  cc moon my_project/              # Same as 'cc moonshot my_project/'"
-        echo "  cc anth --model sonnet-4-5       # Same as 'cc anthropic --model sonnet-4-5'"
+        echo "  cc -e bigmodel                 # Export bigmodel env vars to shell"
+        echo "  eval \"\$(cc -e anthropic)\"     # Use eval to export to current shell"
+        return 1
+    fi
+
+    if [[ "$1" == "--export" || "$1" == "-e" ]]; then
+        export_only=true
+        shift
+    fi
+
+    if [[ $# -eq 0 ]]; then
+        echo "Error: Provider required" >&2
         return 1
     fi
 
@@ -64,11 +75,11 @@ cc() {
             export ANTHROPIC_MODEL_PROVIDER="minimax"
             export ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic
             export ANTHROPIC_AUTH_TOKEN={{ pass "token/minimax/codingplan" }}
-            export ANTHROPIC_MODEL="MiniMax-M2.1"
-            export ANTHROPIC_SMALL_FAST_MODEL="MiniMax-M2.1"
-            export ANTHROPIC_DEFAULT_SONNET_MODEL="MiniMax-M2.1"
-            export ANTHROPIC_DEFAULT_OPUS_MODEL="MiniMax-M2.1"
-            export ANTHROPIC_DEFAULT_HAIKU_MODEL="MiniMax-M2.1"
+            export ANTHROPIC_MODEL="MiniMax-M2.5"
+            export ANTHROPIC_SMALL_FAST_MODEL="MiniMax-M2.5"
+            export ANTHROPIC_DEFAULT_SONNET_MODEL="MiniMax-M2.5"
+            export ANTHROPIC_DEFAULT_OPUS_MODEL="MiniMax-M2.5"
+            export ANTHROPIC_DEFAULT_HAIKU_MODEL="MiniMax-M2.5"
             export API_TIMEOUT_MS="3000000"
             export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
             claude_args=("$@")
@@ -88,6 +99,41 @@ cc() {
             return 1
             ;;
     esac
+
+    if [[ "$export_only" == true ]]; then
+        # Output export commands for eval
+        echo "export ANTHROPIC_MODEL_PROVIDER='${ANTHROPIC_MODEL_PROVIDER}'"
+        if [[ -n "${ANTHROPIC_BASE_URL:-}" ]]; then
+            echo "export ANTHROPIC_BASE_URL='${ANTHROPIC_BASE_URL}'"
+        else
+            echo "unset ANTHROPIC_BASE_URL"
+        fi
+        if [[ -n "${ANTHROPIC_AUTH_TOKEN:-}" ]]; then
+            echo "export ANTHROPIC_AUTH_TOKEN='${ANTHROPIC_AUTH_TOKEN}'"
+        fi
+        if [[ -n "${ANTHROPIC_MODEL:-}" ]]; then
+            echo "export ANTHROPIC_MODEL='${ANTHROPIC_MODEL}'"
+        fi
+        if [[ -n "${ANTHROPIC_SMALL_FAST_MODEL:-}" ]]; then
+            echo "export ANTHROPIC_SMALL_FAST_MODEL='${ANTHROPIC_SMALL_FAST_MODEL}'"
+        fi
+        if [[ -n "${ANTHROPIC_DEFAULT_SONNET_MODEL:-}" ]]; then
+            echo "export ANTHROPIC_DEFAULT_SONNET_MODEL='${ANTHROPIC_DEFAULT_SONNET_MODEL}'"
+        fi
+        if [[ -n "${ANTHROPIC_DEFAULT_OPUS_MODEL:-}" ]]; then
+            echo "export ANTHROPIC_DEFAULT_OPUS_MODEL='${ANTHROPIC_DEFAULT_OPUS_MODEL}'"
+        fi
+        if [[ -n "${ANTHROPIC_DEFAULT_HAIKU_MODEL:-}" ]]; then
+            echo "export ANTHROPIC_DEFAULT_HAIKU_MODEL='${ANTHROPIC_DEFAULT_HAIKU_MODEL}'"
+        fi
+        if [[ -n "${API_TIMEOUT_MS:-}" ]]; then
+            echo "export API_TIMEOUT_MS='${API_TIMEOUT_MS}'"
+        fi
+        if [[ -n "${CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:-}" ]]; then
+            echo "export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC='${CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC}'"
+        fi
+        return 0
+    fi
 
     echo "Starting Claude Code with provider: ${provider}"
     if [[ ${#claude_args[@]} -gt 0 ]]; then
