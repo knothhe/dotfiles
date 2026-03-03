@@ -15,7 +15,7 @@ source "$SCRIPT_DIR/common_functions.sh"
 
 readonly SCRIPT_VERSION="2.0.0"
 readonly DEFAULT_PASSWORD_LENGTH=16
-readonly MIN_PASSWORD_LENGTH=8
+readonly MIN_PASSWORD_LENGTH=4
 readonly MAX_PASSWORD_LENGTH=64
 readonly CLIPBOARD_CLEAR_TIME=45
 readonly CREATE_NEW_ENTRY_MARKER="<Create New Password Entry>"
