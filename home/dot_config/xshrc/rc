@@ -16,7 +16,9 @@ source_file "$HOME/.config/xshrc/tmpl"
 # OS-specific configuration
 if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS (Darwin)
-    source_file "$HOME/.config/xshrc/darwin"
+    for f in "$HOME/.config/xshrc/darwin"/*; do
+        source_file "$f"
+    done
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     # Linux
     source_file "$HOME/.config/xshrc/linux"

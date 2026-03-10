@@ -1,9 +1,3 @@
-# Darwin (macOS) specific shell configuration
-
-# alias
-alias copy="pbcopy"
-alias c="opencode"
-
 # Create a new worktree and branch from within current git directory.
 ga() {
   if [[ -z "$1" ]]; then

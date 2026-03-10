@@ -1,0 +1,6 @@
+# Darwin (macOS) specific shell configuration
+
+# alias
+alias copy="pbcopy"
+alias c="opencode"
+
