@@ -4,6 +4,7 @@
 .chezmoiscripts/darwin/**
 .config/skhd/**
 .local/xbin/darwin/**
+.config/xshrc/darwin/**
 {{ end }}
 
 # linux only
