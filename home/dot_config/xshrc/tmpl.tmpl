@@ -74,17 +74,17 @@ cc() {
             claude_args=("$@")
             ;;
         "minimax"|"mm")
-            # Minimax (m2.x) configuration
-            export ANTHROPIC_MODEL_PROVIDER="minimax"
-            export ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic
-            export ANTHROPIC_AUTH_TOKEN={{ pass "token/minimax/codingplan" }}
-            export ANTHROPIC_MODEL="MiniMax-M2.5"
-            export ANTHROPIC_SMALL_FAST_MODEL="MiniMax-M2.5"
-            export ANTHROPIC_DEFAULT_SONNET_MODEL="MiniMax-M2.5"
-            export ANTHROPIC_DEFAULT_OPUS_MODEL="MiniMax-M2.5"
-            export ANTHROPIC_DEFAULT_HAIKU_MODEL="MiniMax-M2.5"
-            export API_TIMEOUT_MS="3000000"
-            export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+            # minimax (m2.x) configuration
+            export anthropic_model_provider="minimax"
+            export anthropic_base_url=https://api.minimaxi.com/anthropic
+            export anthropic_auth_token={{ pass "token/minimax/codingplan" }}
+            export anthropic_model="minimax-m2.5"
+            export anthropic_small_fast_model="minimax-m2.5"
+            export anthropic_default_sonnet_model="minimax-m2.5"
+            export anthropic_default_opus_model="minimax-m2.5"
+            export anthropic_default_haiku_model="minimax-m2.5"
+            export api_timeout_ms="3000000"
+            export claude_code_disable_nonessential_traffic=1
             claude_args=("$@")
             ;;
         "moonshot"|"moon"|"kimi")
@@ -94,6 +94,20 @@ cc() {
             export ANTHROPIC_AUTH_TOKEN={{ pass "token/moonshot/anthropic_auth_token" }}
             export ANTHROPIC_MODEL=kimi-k2-turbo-preview
             export ANTHROPIC_SMALL_FAST_MODEL=kimi-k2-turbo-preview
+            claude_args=("$@")
+            ;;
+        "anyrouter"|"ar")
+            # anyrouter.top configuration
+            export ANTHROPIC_MODEL_PROVIDER="anyrouter"
+            export ANTHROPIC_BASE_URL="https://anyrouter.top"
+            export ANTHROPIC_AUTH_TOKEN={{ pass "token/anyrouter/auth_token" }}
+            claude_args=("$@")
+            ;;
+        "hongmacc"|"hmc")
+            # hongmacc.com configuration
+            export ANTHROPIC_MODEL_PROVIDER="hongmacc"
+            export ANTHROPIC_BASE_URL="https://anyrouter.top"
+            export ANTHROPIC_AUTH_TOKEN={{ pass "token/hongmacc/auth_token" }}
             claude_args=("$@")
             ;;
         *)
