@@ -10,3 +10,7 @@ defaults write org.gpgtools.common UseKeychain NO
 defaults write com.google.Chrome NSUserKeyEquivalents -dict-add 'Search menus' nil
 # Remove all custom key equivalents (or use -dict-remove for just one)
 # defaults delete com.google.Chrome NSUserKeyEquivalents
+
+# For mouse only (disable natural scrolling for mouse)
+defaults write com.apple.trackpad.scrollBehavior -int 0 # or 2
+defaults write com.apple.mouse.scrollBehavior -int 0    # traditional scroll
