@@ -31,3 +31,5 @@ Thumbs.db
 # Common personal files to ignore
 .env
 .envrc
+
+.codex/config.toml
