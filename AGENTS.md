@@ -84,6 +84,23 @@ proxyoff
 proxyinfo
 ```
 
+### Local Vision Helper
+```bash
+x_eyes <image>                         # Describe a local image via LM Studio
+x_eyes <image> --model <model-id>      # Override the vision model for one call
+x_eyes <image> --lang zh               # Return the description in Chinese
+```
+
+Use `x_eyes` when an agent needs a textual description of a local PNG/JPEG/WebP
+image and native image input is unavailable. It calls LM Studio's
+OpenAI-compatible local server, defaults to `http://localhost:1234/v1`, and
+prints only the scene description to stdout for easy command-pipeline use.
+
+Model selection is intentionally configurable:
+- Set `LMSTUDIO_VISION_MODEL` to pin the default model
+- Pass `--model <model-id>` for one-off calls
+- If neither is set, `x_eyes` uses the first model returned by `/v1/models`
+
 ### Build Automation
 - `Makefile` - Root-level build automation with convenient targets for common setup tasks
 - Chrome extension download and management targets

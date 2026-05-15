@@ -1,0 +1,404 @@
+#!/bin/bash
+
+# x_eyes - Describe a local image with an LM Studio vision model.
+# Uses LM Studio's OpenAI-compatible /v1/chat/completions API.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common_functions.sh"
+
+DEFAULT_BASE_URL="${LMSTUDIO_BASE_URL:-http://localhost:1234/v1}"
+DEFAULT_API_KEY="${LMSTUDIO_API_KEY:-lm-studio}"
+DEFAULT_PROMPT="Describe the visible scene in this image. Include objects, people, text, layout, colors, and any notable UI details. Return only the final description; do not include reasoning, analysis, or hidden chain-of-thought. Be concise but specific."
+DEFAULT_MAX_TOKENS=700
+DEFAULT_TEMPERATURE=0.2
+
+BASE_URL="$DEFAULT_BASE_URL"
+API_KEY="$DEFAULT_API_KEY"
+MODEL="${LMSTUDIO_VISION_MODEL:-}"
+PROMPT="$DEFAULT_PROMPT"
+MAX_TOKENS="$DEFAULT_MAX_TOKENS"
+TEMPERATURE="$DEFAULT_TEMPERATURE"
+LANGUAGE=""
+RAW_RESPONSE=false
+DESCRIPTION_ONLY=false
+COPY_OUTPUT=false
+IMAGE_FILE=""
+
+usage() {
+    cat <<'EOF'
+x_eyes - Describe a local PNG/JPEG/WebP image with LM Studio
+
+Usage:
+    x_eyes <image> [options]
+
+Options:
+    -m, --model <name>          LM Studio model id. Defaults to LMSTUDIO_VISION_MODEL,
+                                or the first model returned by /v1/models.
+    -u, --base-url <url>        LM Studio OpenAI-compatible base URL.
+                                Default: http://localhost:1234/v1
+    -p, --prompt <text>         Custom prompt sent with the image.
+    -l, --lang <en|zh>          Ask for the description in English or Chinese.
+    --max-tokens <number>       Maximum response tokens. Default: 700
+    --temperature <number>      Sampling temperature. Default: 0.2
+    --raw                       Print the raw JSON response.
+    --description-only          If model content is JSON, extract only the
+                                description-like field.
+    --copy                      Copy the description to the clipboard.
+    -h, --help                  Show this help.
+
+Environment:
+    LMSTUDIO_BASE_URL           Override the base URL.
+    LMSTUDIO_API_KEY            API key header value. LM Studio accepts a dummy key.
+    LMSTUDIO_VISION_MODEL       Default vision model id.
+
+Examples:
+    x_eyes screenshot.png
+    x_eyes screenshot.png --model qwen2.5-vl-7b-instruct
+    x_eyes screenshot.png --lang zh --copy
+    x_eyes screenshot.png --description-only
+EOF
+}
+
+fail_usage() {
+    print_error "$1" >&2
+    echo >&2
+    usage >&2
+    exit 1
+}
+
+normalize_base_url() {
+    local url="$1"
+    url="${url%/}"
+    echo "$url"
+}
+
+validate_number() {
+    local value="$1"
+    local name="$2"
+
+    if [[ ! "$value" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+        print_error "$name must be a number: $value" >&2
+        exit 1
+    fi
+}
+
+detect_mime_type() {
+    local file="$1"
+    local mime_type=""
+
+    if command -v file >/dev/null 2>&1; then
+        mime_type=$(file --brief --mime-type "$file")
+    fi
+
+    case "$mime_type" in
+        image/png|image/jpeg|image/webp|image/gif)
+            echo "$mime_type"
+            ;;
+        *)
+            case "${file##*.}" in
+                png|PNG) echo "image/png" ;;
+                jpg|JPG|jpeg|JPEG) echo "image/jpeg" ;;
+                webp|WEBP) echo "image/webp" ;;
+                gif|GIF) echo "image/gif" ;;
+                *) echo "$mime_type" ;;
+            esac
+            ;;
+    esac
+}
+
+resolve_model() {
+    if [[ -n "$MODEL" ]]; then
+        echo "$MODEL"
+        return 0
+    fi
+
+    print_progress "No model specified. Trying to use the first model loaded in LM Studio..." >&2
+
+    local models_response
+    if ! models_response=$(curl -sS \
+        -H "Authorization: Bearer $API_KEY" \
+        "$BASE_URL/models"); then
+        print_error "Failed to query LM Studio models. Is the local server running?" >&2
+        return 1
+    fi
+
+    local resolved_model
+    resolved_model=$(printf '%s' "$models_response" | jq -r '.data[0].id // empty')
+
+    if [[ -z "$resolved_model" ]]; then
+        print_error "No loaded model found. Start LM Studio server and load a vision model, or pass --model." >&2
+        return 1
+    fi
+
+    echo "$resolved_model"
+}
+
+build_prompt() {
+    local prompt="$PROMPT"
+
+    case "$LANGUAGE" in
+        "")
+            ;;
+        en)
+            prompt="$prompt Respond in English."
+            ;;
+        zh)
+            prompt="$prompt 用中文回答。"
+            ;;
+        *)
+            print_error "Unsupported language: $LANGUAGE" >&2
+            exit 1
+            ;;
+    esac
+
+    echo "$prompt"
+}
+
+extract_description_only() {
+    local content="$1"
+
+    printf '%s' "$content" | jq -Rrs '
+        def clean_json_fence:
+            gsub("^\\s*```[jJ]?[sS]?[oO]?[nN]?\\s*"; "")
+            | gsub("\\s*```\\s*$"; "");
+
+        def pick_description:
+            if type == "string" then
+                .
+            elif type == "object" then
+                (
+                    .description
+                    // .scene_description
+                    // .sceneDescription
+                    // .caption
+                    // .summary
+                    // .text
+                    // .content
+                    // .result.description
+                    // .result
+                    // .message
+                    // empty
+                ) | pick_description
+            elif type == "array" then
+                map(pick_description)
+                | map(select(. != null and . != ""))
+                | join("\n")
+            else
+                empty
+            end;
+
+        (clean_json_fence) as $cleaned
+        | try ($cleaned | fromjson | pick_description) catch $cleaned
+    '
+}
+
+strip_reasoning() {
+    local content="$1"
+
+    printf '%s' "$content" | perl -0pe '
+        s/<think\b[^>]*>.*?<\/think>\s*//gis;
+        s/<thinking\b[^>]*>.*?<\/thinking>\s*//gis;
+        s/<reasoning\b[^>]*>.*?<\/reasoning>\s*//gis;
+        s/<analysis\b[^>]*>.*?<\/analysis>\s*//gis;
+        s/```(?:thinking|reasoning|analysis)\s*.*?```\s*//gis;
+        s/^\s*(?:Thinking|Reasoning|Analysis)\s*:\s*.*?(?:\n\s*\n|$)//is;
+        s/^\s+//;
+        s/\s+$//;
+    '
+}
+
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -m|--model)
+                [[ $# -ge 2 ]] || fail_usage "$1 requires a value"
+                MODEL="$2"
+                shift 2
+                ;;
+            -u|--base-url)
+                [[ $# -ge 2 ]] || fail_usage "$1 requires a value"
+                BASE_URL="$2"
+                shift 2
+                ;;
+            -p|--prompt)
+                [[ $# -ge 2 ]] || fail_usage "$1 requires a value"
+                PROMPT="$2"
+                shift 2
+                ;;
+            -l|--lang)
+                [[ $# -ge 2 ]] || fail_usage "$1 requires a value"
+                LANGUAGE="$2"
+                shift 2
+                ;;
+            --max-tokens)
+                [[ $# -ge 2 ]] || fail_usage "$1 requires a value"
+                MAX_TOKENS="$2"
+                shift 2
+                ;;
+            --temperature)
+                [[ $# -ge 2 ]] || fail_usage "$1 requires a value"
+                TEMPERATURE="$2"
+                shift 2
+                ;;
+            --raw)
+                RAW_RESPONSE=true
+                shift
+                ;;
+            --description-only|--desc)
+                DESCRIPTION_ONLY=true
+                shift
+                ;;
+            --copy)
+                COPY_OUTPUT=true
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            --)
+                shift
+                break
+                ;;
+            -*)
+                fail_usage "Unknown option: $1"
+                ;;
+            *)
+                if [[ -n "$IMAGE_FILE" ]]; then
+                    fail_usage "Only one image path is supported"
+                fi
+                IMAGE_FILE="$1"
+                shift
+                ;;
+        esac
+    done
+
+    if [[ $# -gt 0 ]]; then
+        fail_usage "Unexpected arguments: $*"
+    fi
+}
+
+main() {
+    parse_args "$@"
+
+    [[ -n "$IMAGE_FILE" ]] || fail_usage "Image path is required"
+
+    IMAGE_FILE=$(expand_path "$IMAGE_FILE")
+    BASE_URL=$(normalize_base_url "$BASE_URL")
+
+    validate_file "$IMAGE_FILE" "Image file" >&2
+    check_dependencies curl jq base64 perl >&2
+    validate_number "$MAX_TOKENS" "max tokens"
+    validate_number "$TEMPERATURE" "temperature"
+
+    local mime_type
+    mime_type=$(detect_mime_type "$IMAGE_FILE")
+    if [[ ! "$mime_type" =~ ^image/(png|jpeg|webp|gif)$ ]]; then
+        print_error "Unsupported or unknown image type: ${mime_type:-unknown}" >&2
+        exit 1
+    fi
+
+    local model
+    model=$(resolve_model)
+
+    local prompt
+    prompt=$(build_prompt)
+
+    local image_base64_file
+    image_base64_file=$(create_temp_file "x_eyes_image_base64")
+    local payload_file
+    payload_file=$(create_temp_file "x_eyes_payload")
+    trap 'rm -f "$image_base64_file" "$payload_file"' EXIT
+
+    base64 < "$IMAGE_FILE" | tr -d '\n' > "$image_base64_file"
+
+    jq -n \
+        --arg model "$model" \
+        --arg prompt "$prompt" \
+        --arg mime_type "$mime_type" \
+        --rawfile image_base64 "$image_base64_file" \
+        --argjson max_tokens "$MAX_TOKENS" \
+        --argjson temperature "$TEMPERATURE" \
+        '{
+            model: $model,
+            messages: [
+                {
+                    role: "user",
+                    content: [
+                        { type: "text", text: $prompt },
+                        {
+                            type: "image_url",
+                            image_url: {
+                                url: ("data:" + $mime_type + ";base64," + $image_base64)
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens: $max_tokens,
+            temperature: $temperature
+        }' > "$payload_file"
+
+    local response
+    if ! response=$(curl -sS \
+        -H "Authorization: Bearer $API_KEY" \
+        -H "Content-Type: application/json" \
+        --data-binary "@$payload_file" \
+        "$BASE_URL/chat/completions"); then
+        print_error "Failed to call LM Studio chat completions endpoint: $BASE_URL/chat/completions" >&2
+        exit 1
+    fi
+
+    if [[ "$RAW_RESPONSE" == true ]]; then
+        printf '%s\n' "$response"
+        exit 0
+    fi
+
+    local description
+    description=$(printf '%s' "$response" | jq -r '
+        if .error then
+            empty
+        else
+            .choices[0].message.content
+            | if type == "string" then
+                .
+              elif type == "array" then
+                map(
+                    if type == "object" and .type == "text" then
+                        .text // empty
+                    elif type == "string" then
+                        .
+                    else
+                        empty
+                    end
+                ) | join("\n")
+              else
+                .
+              end
+            // empty
+        end
+    ')
+
+    if [[ -z "$description" ]]; then
+        print_error "LM Studio returned no description." >&2
+        printf '%s\n' "$response" | jq -r '.error.message // .' >&2
+        exit 1
+    fi
+
+    if [[ "$DESCRIPTION_ONLY" == true ]]; then
+        description=$(extract_description_only "$description")
+    fi
+
+    description=$(strip_reasoning "$description")
+
+    if [[ "$COPY_OUTPUT" == true ]]; then
+        copy_to_clipboard "$description"
+        print_success "Description copied to clipboard" >&2
+    fi
+
+    printf '%s\n' "$description"
+}
+
+main "$@"
