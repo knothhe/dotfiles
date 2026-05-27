@@ -1,0 +1,475 @@
+{
+  "config": {
+    "language": {
+      "sourceCode": "auto",
+      "targetCode": "cmn",
+      "level": "intermediate"
+    },
+    "providersConfig": [
+      {
+        "id": "microsoft-translate-default",
+        "name": "Microsoft Translator",
+        "enabled": true,
+        "provider": "microsoft-translate"
+      },
+      {
+        "id": "google-translate-default",
+        "name": "Google Translate",
+        "enabled": true,
+        "provider": "google-translate"
+      },
+      {
+        "id": "openai-default",
+        "name": "OpenAI",
+        "description": "Provides models like GPT-4o",
+        "enabled": false,
+        "provider": "openai",
+        "model": {
+          "model": "gpt-5-mini",
+          "isCustomModel": false,
+          "customModel": null
+        }
+      },
+      {
+        "id": "tensdaq-default",
+        "name": "Tensdaq",
+        "description": "Revolutionary bidding AI MaaS platform with market-driven pricing, eliminating high-cost fixed pricing",
+        "enabled": false,
+        "baseURL": "https://tensdaq-api.x-aio.com/v1",
+        "provider": "tensdaq",
+        "model": {
+          "model": "Qwen3-30B-A3B-Instruct-2507",
+          "isCustomModel": true,
+          "customModel": null
+        }
+      },
+      {
+        "id": "ai302-default",
+        "name": "302.AI",
+        "description": "Provides the latest and most comprehensive models with pay-as-you-go API",
+        "enabled": false,
+        "baseURL": "https://api.302.ai/v1",
+        "provider": "ai302",
+        "model": {
+          "model": "gpt-4.1-mini",
+          "isCustomModel": true,
+          "customModel": null
+        }
+      },
+      {
+        "id": "google-default",
+        "name": "Gemini",
+        "description": "Google's flagship AI models with advanced reasoning capabilities",
+        "enabled": false,
+        "provider": "google",
+        "model": {
+          "model": "gemini-3.1-flash-lite",
+          "isCustomModel": false,
+          "customModel": null
+        }
+      },
+      {
+        "id": "deeplx-default",
+        "name": "DeepLX",
+        "description": "Unofficial DeepL API",
+        "enabled": true,
+        "baseURL": "{{ pass "token/deeplx/linuxdo" }}",
+        "provider": "deeplx"
+      },
+      {
+        "id": "1dd4de78-d752-4018-8802-f7cf9a7404e9",
+        "name": "DeepSeek",
+        "description": "Recommend to use in China",
+        "enabled": true,
+        "provider": "deepseek",
+        "apiKey": "{{ pass "token/deepseek/read-frog" }}",
+        "model": {
+          "model": "deepseek-v4-flash",
+          "isCustomModel": false,
+          "customModel": null
+        }
+      }
+    ],
+    "translate": {
+      "providerId": "deeplx-default",
+      "mode": "bilingual",
+      "node": {
+        "enabled": false,
+        "hotkey": "control"
+      },
+      "page": {
+        "range": "all",
+        "autoTranslatePatterns": [
+          "news.ycombinator.com"
+        ],
+        "autoTranslateLanguages": [],
+        "shortcut": "Alt+E",
+        "preload": {
+          "margin": 1000,
+          "threshold": 0
+        },
+        "minCharactersPerNode": 0,
+        "minWordsPerNode": 0,
+        "enableTargetLanguageSkip": true,
+        "skipLanguages": []
+      },
+      "enableAIContentAware": false,
+      "customPromptsConfig": {
+        "promptId": null,
+        "patterns": []
+      },
+      "requestQueueConfig": {
+        "capacity": 60,
+        "rate": 8
+      },
+      "batchQueueConfig": {
+        "maxCharactersPerBatch": 1000,
+        "maxItemsPerBatch": 4
+      },
+      "translationNodeStyle": {
+        "preset": "textColor",
+        "isCustom": false,
+        "customCSS": null
+      }
+    },
+    "languageDetection": {
+      "mode": "llm",
+      "providerId": "1dd4de78-d752-4018-8802-f7cf9a7404e9"
+    },
+    "tts": {
+      "defaultVoice": "en-US-DavisNeural",
+      "languageVoices": {
+        "eng": "en-US-DavisNeural",
+        "cmn": "zh-CN-YunxiNeural",
+        "cmn-Hant": "zh-TW-YunJheNeural",
+        "yue": "zh-CN-YunxiNeural",
+        "spa": "es-ES-AlvaroNeural",
+        "rus": "ru-RU-DmitryNeural",
+        "arb": "ar-SA-HamedNeural",
+        "ben": "bn-BD-NabanitaNeural",
+        "hin": "hi-IN-MadhurNeural",
+        "por": "pt-BR-AntonioNeural",
+        "ind": "id-ID-ArdiNeural",
+        "jpn": "ja-JP-KeitaNeural",
+        "fra": "fr-FR-HenriNeural",
+        "deu": "de-DE-ConradNeural",
+        "jav": "jv-ID-DimasNeural",
+        "kor": "ko-KR-InJoonNeural",
+        "tel": "te-IN-MohanNeural",
+        "vie": "vi-VN-NamMinhNeural",
+        "mar": "mr-IN-ManoharNeural",
+        "ita": "it-IT-DiegoNeural",
+        "tam": "ta-IN-ValluvarNeural",
+        "tur": "tr-TR-AhmetNeural",
+        "urd": "ur-PK-AsadNeural",
+        "guj": "gu-IN-NiranjanNeural",
+        "pol": "pl-PL-MarekNeural",
+        "ukr": "uk-UA-OstapNeural",
+        "kan": "kn-IN-GaganNeural",
+        "mai": "en-US-DavisNeural",
+        "mal": "ml-IN-MidhunNeural",
+        "pes": "fa-IR-FaridNeural",
+        "mya": "my-MM-ThihaNeural",
+        "swh": "sw-KE-RafikiNeural",
+        "sun": "su-ID-JajangNeural",
+        "ron": "ro-RO-EmilNeural",
+        "pan": "pa-IN-OjasNeural",
+        "bho": "en-US-DavisNeural",
+        "amh": "am-ET-AmehaNeural",
+        "hau": "ha-NG-AbubakarNeural",
+        "fuv": "ff-Latn-SN-SambaNeural",
+        "bos": "bs-BA-GoranNeural",
+        "hrv": "hr-HR-SreckoNeural",
+        "nld": "nl-NL-MaartenNeural",
+        "srp": "sr-RS-NicholasNeural",
+        "tha": "th-TH-NiwatNeural",
+        "ckb": "en-US-DavisNeural",
+        "yor": "yo-NG-AbeoNeural",
+        "uzn": "uz-UZ-SardorNeural",
+        "zlm": "ms-MY-OsmanNeural",
+        "ibo": "ig-NG-EzinneNeural",
+        "npi": "ne-NP-SagarNeural",
+        "ceb": "en-US-DavisNeural",
+        "skr": "en-US-DavisNeural",
+        "tgl": "fil-PH-AngeloNeural",
+        "hun": "hu-HU-TamasNeural",
+        "azj": "az-AZ-BabekNeural",
+        "sin": "si-LK-SameeraNeural",
+        "koi": "en-US-DavisNeural",
+        "ell": "el-GR-NestorasNeural",
+        "ces": "cs-CZ-AntoninNeural",
+        "mag": "en-US-DavisNeural",
+        "run": "en-US-DavisNeural",
+        "bel": "be-BY-YauheniNeural",
+        "plt": "en-US-DavisNeural",
+        "qug": "en-US-DavisNeural",
+        "mad": "en-US-DavisNeural",
+        "nya": "en-US-GuyNeural",
+        "zyb": "en-US-DavisNeural",
+        "pbu": "en-US-DavisNeural",
+        "kin": "rw-RW-JeanNeural",
+        "zul": "zu-ZA-ThembaNeural",
+        "bul": "bg-BG-BorislavNeural",
+        "swe": "sv-SE-MattiasNeural",
+        "lin": "ln-CD-BaudouinNeural",
+        "som": "so-SO-MuuseNeural",
+        "hms": "en-US-DavisNeural",
+        "hnj": "en-US-DavisNeural",
+        "ilo": "en-US-DavisNeural",
+        "kaz": "kk-KZ-DauletNeural",
+        "heb": "he-IL-AvriNeural",
+        "nob": "nb-NO-FinnNeural",
+        "nno": "nn-NO-FinnNeural",
+        "afr": "af-ZA-AdriNeural",
+        "sqi": "sq-AL-IlirNeural",
+        "asm": "as-IN-BiswajitNeural",
+        "eus": "eu-ES-AnderNeural",
+        "bre": "fr-FR-HenriNeural",
+        "cat": "ca-ES-EnricNeural",
+        "cos": "fr-FR-HenriNeural",
+        "cym": "cy-GB-AledNeural",
+        "dan": "da-DK-JeppeNeural",
+        "div": "si-LK-SameeraNeural",
+        "epo": "en-US-GuyNeural",
+        "ekk": "et-EE-KertNeural",
+        "fao": "fo-FO-PoulNeural",
+        "fij": "en-US-GuyNeural",
+        "fin": "fi-FI-HarriNeural",
+        "fry": "nl-NL-MaartenNeural",
+        "gla": "en-GB-RyanNeural",
+        "gle": "ga-IE-ColmNeural",
+        "glg": "gl-ES-RoiNeural",
+        "grn": "es-ES-AlvaroNeural",
+        "hat": "fr-FR-HenriNeural",
+        "haw": "en-US-DavisNeural",
+        "hye": "hy-AM-HaykNeural",
+        "ido": "en-US-GuyNeural",
+        "ina": "en-US-GuyNeural",
+        "isl": "is-IS-GunnarNeural",
+        "kat": "ka-GE-GiorgiNeural",
+        "khm": "km-KH-PisethNeural",
+        "kir": "kk-KZ-DauletNeural",
+        "lao": "lo-LA-ChanthavongNeural",
+        "lat": "it-IT-DiegoNeural",
+        "lvs": "lv-LV-NilsNeural",
+        "lit": "lt-LT-LeonasNeural",
+        "ltz": "fr-FR-HenriNeural",
+        "mkd": "mk-MK-AleksandarNeural",
+        "mlt": "mt-MT-JosephNeural",
+        "mon": "mn-MN-BataaNeural",
+        "mri": "en-NZ-MitchellNeural",
+        "nso": "en-US-DavisNeural",
+        "oci": "fr-FR-HenriNeural",
+        "ori": "or-IN-DineshNeural",
+        "orm": "en-US-GuyNeural",
+        "prs": "en-US-DavisNeural",
+        "san": "hi-IN-MadhurNeural",
+        "slk": "sk-SK-LukasNeural",
+        "slv": "sl-SI-RokNeural",
+        "smo": "en-US-GuyNeural",
+        "sna": "en-US-GuyNeural",
+        "snd": "sd-PK-SalmanNeural",
+        "sot": "en-US-GuyNeural",
+        "tah": "fr-FR-HenriNeural",
+        "tat": "tt-RU-AidarNeural",
+        "tgk": "tg-TJ-SharifNeural",
+        "tir": "am-ET-AmehaNeural",
+        "ton": "en-US-GuyNeural",
+        "tsn": "en-US-GuyNeural",
+        "tuk": "tk-TM-AmanNeural",
+        "uig": "ug-CN-KashgarNeural",
+        "vol": "en-US-GuyNeural",
+        "wol": "en-US-GuyNeural",
+        "xho": "xh-ZA-ThembaNeural",
+        "ydd": "he-IL-AvriNeural",
+        "aka": "en-US-GuyNeural",
+        "bam": "fr-FR-HenriNeural",
+        "bis": "en-US-GuyNeural",
+        "bod": "zh-CN-YunxiNeural",
+        "che": "ru-RU-DmitryNeural",
+        "chv": "ru-RU-DmitryNeural",
+        "dzo": "zh-CN-YunxiNeural",
+        "ewe": "en-US-GuyNeural",
+        "kab": "en-US-DavisNeural",
+        "lug": "en-US-GuyNeural",
+        "oss": "ru-RU-DmitryNeural",
+        "ssw": "en-US-GuyNeural",
+        "ven": "en-US-GuyNeural",
+        "war": "en-US-DavisNeural",
+        "nde": "en-US-GuyNeural",
+        "nbl": "en-US-GuyNeural",
+        "pam": "en-US-DavisNeural",
+        "hil": "en-US-DavisNeural",
+        "bcl": "en-US-DavisNeural",
+        "min": "en-US-DavisNeural",
+        "ace": "en-US-DavisNeural",
+        "bug": "en-US-DavisNeural",
+        "ban": "en-US-DavisNeural",
+        "bjn": "en-US-DavisNeural",
+        "mak": "en-US-DavisNeural",
+        "sas": "en-US-DavisNeural",
+        "tet": "en-US-DavisNeural",
+        "cha": "en-US-GuyNeural",
+        "niu": "en-US-DavisNeural",
+        "tvl": "en-US-DavisNeural",
+        "gil": "en-US-DavisNeural",
+        "mah": "en-US-GuyNeural",
+        "pau": "en-US-DavisNeural",
+        "wls": "en-US-DavisNeural",
+        "rar": "en-US-DavisNeural",
+        "hif": "en-US-DavisNeural"
+      },
+      "rate": 0,
+      "pitch": 0,
+      "volume": 0
+    },
+    "floatingButton": {
+      "enabled": true,
+      "position": 0.66,
+      "side": "right",
+      "disabledFloatingButtonPatterns": [],
+      "clickAction": "translate",
+      "locked": false
+    },
+    "selectionToolbar": {
+      "enabled": true,
+      "disabledSelectionToolbarPatterns": [],
+      "opacity": 100,
+      "features": {
+        "translate": {
+          "enabled": true,
+          "providerId": "deeplx-default"
+        },
+        "speak": {
+          "enabled": true
+        }
+      },
+      "customActions": [
+        {
+          "id": "default-dictionary",
+          "name": "Dictionary",
+          "enabled": true,
+          "icon": "tabler:book-2",
+          "providerId": "1dd4de78-d752-4018-8802-f7cf9a7404e9",
+          "systemPrompt": "You are a dictionary assistant for language learners.\n\n## Goal\nGiven a term and its surrounding paragraphs, produce a concise dictionary entry that matches the required output object.\n\n## Rules\n1. Focus on the meaning that best matches the provided paragraphs.\n2. Normalize Term to its base/canonical form.\n3. Keep Definition precise and learner-friendly.\n4. Keep Paragraphs exactly as provided in the prompt.\n5. Phonetic must use the standard notation for the term's language (e.g., IPA for English, pinyin for Mandarin, romaji for Japanese).\n6. Part of Speech in English (noun, verb, adjective, etc.).\n7. Difficulty must be a CEFR level (A1, A2, B1, B2, C1, or C2).\n8. If a field is unknown, return an empty string instead of guessing.\n9. Respond in {{targetLanguage}} for all textual fields unless source-form text is required for clarity.\n\n## Examples\n\n### Example 1\nInput: Selection=\"blossoms\", Paragraphs=\"The ephemeral beauty of cherry blossoms reminds us to cherish each moment.\", Target language=Chinese\n\nOutput:\n- Term: blossom\n- Phonetic: /ˈblɒs.əm/\n- Part of Speech: noun\n- Paragraphs: The ephemeral beauty of cherry blossoms reminds us to cherish each moment.\n- Definition: 花；花朵（尤指果树的花）\n- Paragraphs Translation: 樱花短暂的美丽提醒我们珍惜每一刻。\n- Difficulty: B2\n\n### Example 2\nInput: Selection=\"感動\", Paragraphs=\"この映画はつまらないと思ったけど、最後は感動した。\", Target language=English\n\nOutput:\n- Term: 感動\n- Phonetic: kandou\n- Part of Speech: noun\n- Paragraphs: この映画はつまらないと思ったけど、最後は感動した。\n- Definition: Being deeply moved; emotional touch\n- Paragraphs Translation: I thought this movie was boring, but the ending was moving.\n- Difficulty: B1",
+          "prompt": "## Input\nSelection: {{selection}}\nParagraphs: {{paragraphs}}\nTarget language: {{targetLanguage}}",
+          "outputSchema": [
+            {
+              "id": "default-dictionary-term",
+              "name": "Term",
+              "type": "string",
+              "description": "Base/canonical lemma of the selected term.",
+              "speaking": true
+            },
+            {
+              "id": "default-dictionary-phonetic",
+              "name": "Phonetic",
+              "type": "string",
+              "description": "Standard phonetic transcription for the term's language (e.g., IPA for English, pinyin for Mandarin, romaji for Japanese).",
+              "speaking": false
+            },
+            {
+              "id": "default-dictionary-part-of-speech",
+              "name": "Part of Speech",
+              "type": "string",
+              "description": "Grammatical category (e.g., noun, verb, adjective).",
+              "speaking": false
+            },
+            {
+              "id": "default-dictionary-definition",
+              "name": "Definition",
+              "type": "string",
+              "description": "One concise definition for the contextual sense.",
+              "speaking": false
+            },
+            {
+              "id": "default-dictionary-context",
+              "name": "Paragraphs",
+              "type": "string",
+              "description": "The paragraphs from the prompt above. Do not rewrite them.",
+              "speaking": true
+            },
+            {
+              "id": "default-dictionary-context-translation",
+              "name": "Paragraphs Translation",
+              "type": "string",
+              "description": "The translation of the paragraphs.",
+              "speaking": false
+            },
+            {
+              "id": "default-dictionary-difficulty",
+              "name": "Difficulty",
+              "type": "string",
+              "description": "Estimated CEFR difficulty level A1, A2, B1, B2, C1, or C2.",
+              "speaking": false
+            }
+          ]
+        }
+      ]
+    },
+    "sideContent": {
+      "width": 420
+    },
+    "betaExperience": {
+      "enabled": false
+    },
+    "contextMenu": {
+      "enabled": true
+    },
+    "inputTranslation": {
+      "enabled": true,
+      "providerId": "deeplx-default",
+      "fromLang": "targetCode",
+      "toLang": "sourceCode",
+      "enableCycle": false,
+      "timeThreshold": 300
+    },
+    "videoSubtitles": {
+      "enabled": true,
+      "autoStart": false,
+      "providerId": "deeplx-default",
+      "style": {
+        "displayMode": "bilingual",
+        "translationPosition": "above",
+        "main": {
+          "fontFamily": "system",
+          "fontScale": 100,
+          "color": "#FFFFFF",
+          "fontWeight": 400
+        },
+        "translation": {
+          "fontFamily": "system",
+          "fontScale": 100,
+          "color": "#FFFFFF",
+          "fontWeight": 400
+        },
+        "container": {
+          "backgroundOpacity": 75
+        }
+      },
+      "aiSegmentation": false,
+      "requestQueueConfig": {
+        "capacity": 60,
+        "rate": 8
+      },
+      "batchQueueConfig": {
+        "maxCharactersPerBatch": 1000,
+        "maxItemsPerBatch": 4
+      },
+      "customPromptsConfig": {
+        "promptId": null,
+        "patterns": []
+      },
+      "position": {
+        "percent": 10,
+        "anchor": "bottom"
+      }
+    },
+    "siteControl": {
+      "mode": "blacklist",
+      "blacklistPatterns": [],
+      "whitelistPatterns": []
+    }
+  },
+  "schemaVersion": 72
+}
