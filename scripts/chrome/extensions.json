@@ -53,6 +53,14 @@
         "algorithm": "sha256",
         "hash": "c90ff23ec91cc66b8f33fff5203759b1b990a42e45654ad145b3e577810bdd0c"
       }
+    },
+    {
+      "name": "opencli",
+      "url": "https://github.com/jackwener/OpenCLI/releases/download/v1.8.3/opencli-extension-v1.0.19.zip",
+      "description": "A lightweight Browser Bridge extension plus a small local daemon for opencli",
+      "checksum": {
+        "hash": "148fa57f20c50f4cc57c14877bbcf05c4d400bb9c9453dc1cd3a4e09a5589840"
+      }
     }
   ]
 }
