@@ -1,0 +1,112 @@
+#!/bin/bash
+
+# copyfile - Copy files or directories to the macOS clipboard
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../common_functions.sh"
+
+show_usage() {
+    cat <<EOF
+copyfile - Copy files or directories to the macOS clipboard
+
+USAGE:
+    copyfile <path> [path...]
+
+EXAMPLES:
+    copyfile ./README.md
+    copyfile ~/Downloads/photo.png ~/Documents/report.pdf
+    copyfile ~/Pictures
+
+EOF
+}
+
+check_macos() {
+    if ! is_darwin; then
+        print_error "copyfile is only available on macOS"
+        exit 1
+    fi
+}
+
+absolute_path() {
+    local input_path="$1"
+    local dir_path
+    local base_name
+
+    dir_path="$(dirname "$input_path")"
+    base_name="$(basename "$input_path")"
+
+    if ! dir_path="$(cd "$dir_path" 2>/dev/null && pwd -P)"; then
+        return 1
+    fi
+
+    printf '%s/%s\n' "$dir_path" "$base_name"
+}
+
+copy_paths_to_clipboard() {
+    osascript - "$@" <<'APPLESCRIPT'
+use framework "AppKit"
+use framework "Foundation"
+use scripting additions
+
+on run argv
+    set fileURLs to current application's NSMutableArray's array()
+
+    repeat with itemPath in argv
+        set fileURL to current application's NSURL's fileURLWithPath:itemPath
+        (fileURLs's addObject:fileURL)
+    end repeat
+
+    set pasteboard to current application's NSPasteboard's generalPasteboard()
+    pasteboard's clearContents()
+
+    set didWrite to pasteboard's writeObjects:fileURLs
+    if didWrite as boolean is false then error "Failed to write file URLs to pasteboard"
+end run
+APPLESCRIPT
+}
+
+main() {
+    check_macos
+
+    if [[ $# -eq 0 ]] || [[ "${1:-}" == "-h" ]] || [[ "${1:-}" == "--help" ]]; then
+        show_usage
+        exit 0
+    fi
+
+    if ! check_dependencies osascript; then
+        exit 1
+    fi
+
+    local paths=()
+    local input_path
+    local resolved_path
+
+    for input_path in "$@"; do
+        if [[ ! -e "$input_path" ]]; then
+            print_error "Path does not exist: $input_path"
+            exit 1
+        fi
+
+        if ! resolved_path="$(absolute_path "$input_path")"; then
+            print_error "Failed to resolve path: $input_path"
+            exit 1
+        fi
+
+        paths+=("$resolved_path")
+    done
+
+    if copy_paths_to_clipboard "${paths[@]}"; then
+        if [[ ${#paths[@]} -eq 1 ]]; then
+            print_success "Copied to clipboard: ${paths[0]}"
+        else
+            print_success "Copied ${#paths[@]} items to clipboard"
+        fi
+    else
+        print_error "Failed to copy item(s) to clipboard"
+        exit 1
+    fi
+}
+
+main "$@"
