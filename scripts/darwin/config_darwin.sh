@@ -9,16 +9,13 @@ source "${SCRIPT_DIR}/../../home/dot_local/xbin/common_functions.sh"
 
 readonly SUPPORTED_BROWSERS=(chromium chrome vivaldi brave firefox)
 readonly BROWSER="${1:-chrome}"
-readonly STARSHIP_INIT='eval "$(starship init zsh)"'
 
 if ! is_darwin; then
     print_error "This configuration script is only supported on macOS"
     exit 1
 fi
 
-check_dependencies brew gpg jq make starship
-
-ensure_line_in_file "$STARSHIP_INIT" "$HOME/.zshrc"
+check_dependencies brew gpg jq make
 
 browser_supported=false
 for supported_browser in "${SUPPORTED_BROWSERS[@]}"; do
