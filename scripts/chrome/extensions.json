@@ -61,6 +61,14 @@
       "checksum": {
         "hash": "148fa57f20c50f4cc57c14877bbcf05c4d400bb9c9453dc1cd3a4e09a5589840"
       }
+    },
+    {
+      "name": "vibe-reading",
+      "url": "https://github.com/knothhe/vibe-reading/releases/download/v1.34.0/vibe-readingextension-1.34.0-chrome.zip",
+      "description": "Vibe Reading - feel the vibe, no hassles",
+      "checksum": {
+        "hash": "c32c574c5fb61caac44b7e1c239c60baec0929a96f99922ce16776ca72a4dad6"
+      }
     }
   ]
 }
