@@ -24,6 +24,12 @@ install_flatpak_packages:
 install_darwin_packages:
 	@cd scripts/darwin && ./install_packages.sh
 
+# Configure macOS
+BROWSER ?= chrome
+
+config_darwin:
+	@./scripts/darwin/config_darwin.sh "$(BROWSER)"
+
 # enable macOS shkd
 enable_darwin_skhd:
 	@skhd --start-service
@@ -52,6 +58,7 @@ help:
 	@echo "  install_yay_packages         - Install Yay AUR helper and packages"
 	@echo "  install_flatpak_packages     - Install Flatpak packages"
 	@echo "  install_darwin_packages      - Install macOS packages"
+	@echo "  config_darwin                - Configure macOS (BROWSER=chrome by default)"
 	@echo "  enable_darwin_skhd           - Enable macOS skhd service"
 	@echo "  install_piclist              - Install PicList globally via pnpm"
 	@echo "  install_ai_tools             - Install opencode globally via pnpm"

@@ -291,6 +291,27 @@ ensure_directory() {
     echo "$expanded_dir"
 }
 
+# Ensure an exact line exists in a file
+ensure_line_in_file() {
+    local line="$1"
+    local file="$2"
+
+    if [[ -f "$file" ]] && grep -qxF "$line" "$file"; then
+        return 0
+    fi
+
+    if [[ -s "$file" ]] && [[ -n "$(tail -c 1 "$file")" ]]; then
+        printf '\n' >> "$file"
+    fi
+
+    printf '%s\n' "$line" >> "$file" || {
+        print_error "Failed to update file: $file"
+        return 1
+    }
+
+    print_success "Added line to $file: $line"
+}
+
 # Check if file exists and is not empty
 validate_file() {
     local file="$1"
