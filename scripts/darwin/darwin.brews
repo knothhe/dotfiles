@@ -25,3 +25,5 @@ trash
 tree
 tree-sitter
 zoxide
+zsh-autosuggestions
+zsh-syntax-highlighting

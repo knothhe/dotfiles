@@ -4,7 +4,70 @@
 alias copy="pbcopy"
 alias c="opencode"
 
+# ---------- basic ----------
+export EDITOR="nvim"
+export VISUAL="$EDITOR"
+
+bindkey -e
+setopt AUTO_CD
+setopt INTERACTIVE_COMMENTS
+setopt NO_BEEP
+
+# ---------- history ----------
+HISTFILE="$HOME/.zsh_history"
+HISTSIZE=50000
+SAVEHIST=10000
+
+setopt EXTENDED_HISTORY
+setopt SHARE_HISTORY
+setopt HIST_IGNORE_ALL_DUPS
+setopt HIST_FIND_NO_DUPS
+setopt HIST_IGNORE_SPACE
+setopt HIST_REDUCE_BLANKS
+setopt HIST_SAVE_NO_DUPS
+
+# ---------- completion ----------
+autoload -Uz compinit
+compinit
+
+zstyle ':completion:*' menu select
+zstyle ':completion:*' matcher-list \
+  'm:{a-zA-Z}={A-Za-z}' \
+  'r:|[._-]=* r:|=*'
+zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
+
+# Search history using the current input prefix with the arrow keys
+autoload -Uz up-line-or-beginning-search down-line-or-beginning-search
+zle -N up-line-or-beginning-search
+zle -N down-line-or-beginning-search
+bindkey '^[[A' up-line-or-beginning-search
+bindkey '^[[B' down-line-or-beginning-search
+
+# ---------- Homebrew plugins ----------
+ZSH_AUTOSUGGEST_STRATEGY=(history completion)
+ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8'
+
+if [[ -n "${HOMEBREW_PREFIX:-}" && -r "$HOMEBREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh" ]]; then
+  source "$HOMEBREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
+fi
+
+# ---------- Modern CLI tools ----------
+command -v fzf >/dev/null && source <(fzf --zsh)
+command -v zoxide >/dev/null && eval "$(zoxide init zsh)"
+
+alias ls='eza --icons=auto'
+alias ll='eza -lah --icons=auto --git'
+alias tree='eza --tree --icons=auto'
+alias cat='bat'
+
 # mise
-eval "$(/opt/homebrew/bin/mise activate zsh)"
+command -v mise >/dev/null && eval "$(mise activate zsh)"
+
+# ---------- Prompt ----------
 # starship
-eval "$(starship init zsh)"
+command -v starship >/dev/null && eval "$(starship init zsh)"
+
+# Syntax highlighting must be loaded after all ZLE widgets and plugins
+if [[ -n "${HOMEBREW_PREFIX:-}" && -r "$HOMEBREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ]]; then
+  source "$HOMEBREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+fi
