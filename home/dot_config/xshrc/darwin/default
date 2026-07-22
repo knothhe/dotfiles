@@ -26,6 +26,24 @@ setopt HIST_IGNORE_SPACE
 setopt HIST_REDUCE_BLANKS
 setopt HIST_SAVE_NO_DUPS
 
+# ---------- set hostname --------
+set_hostname() {
+    local host_name="$1"
+
+    sudo scutil --set ComputerName "$host_name" || return 1
+    sudo scutil --set LocalHostName "$host_name" || return 1
+    sudo scutil --set HostName "$host_name" || return 1
+
+    echo "Hostname updated:"
+    get_hostname
+}
+
+get_hostname() {
+    echo "ComputerName:  $(scutil --get ComputerName 2>/dev/null || echo 'not set')"
+    echo "LocalHostName: $(scutil --get LocalHostName 2>/dev/null || echo 'not set')"
+    echo "HostName:      $(scutil --get HostName 2>/dev/null || echo 'not set')"
+}
+
 # ---------- completion ----------
 autoload -Uz compinit
 compinit

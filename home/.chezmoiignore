@@ -25,4 +25,5 @@
 .config/xshrc/tmpl
 .piclist/config.json
 .ssh/config
+.config/opencode/opencode.json
 {{end}}
