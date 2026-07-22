@@ -23,13 +23,6 @@ Host github0.com
     User git
     IdentityFile ~/.ssh/github_dev
 
-Host v1.claw.cloud
-    HostName {{ pass "guanglai/vps/clawcloud/ip" }}
-    User guanglai
-    Port 2233
-    PreferredAuthentications publickey
-    IdentityFile ~/.ssh/claw_cloud
-
 Host tencent_tokyo
     HostName {{ pass "guanglai/vps/tencent/tokyo_debian_ip" }}
     User guanglai
