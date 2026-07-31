@@ -7,6 +7,12 @@
 download_chrome_extensions:
 	@./scripts/chrome/download_extension.sh
 
+force_download_chrome_extensions:
+	@./scripts/chrome/download_extension.sh --force
+
+update_chrome_extensions:
+	@./scripts/chrome/download_extension.sh --missing-checksum
+
 select_chrome_extensions:
 	@./scripts/chrome/download_extension.sh --select
 
@@ -53,6 +59,8 @@ add_hypr_source:
 help:
 	@echo "Available targets:"
 	@echo "  download_chrome_extensions   - Download all Chrome extensions"
+	@echo "  force_download_chrome_extensions - Force re-download all Chrome extensions"
+	@echo "  update_chrome_extensions     - Download extensions without a checksum"
 	@echo "  select_chrome_extensions     - Select and download Chrome extensions"
 	@echo "  install_pacman_packages      - Install Arch Linux pacman packages"
 	@echo "  install_yay_packages         - Install Yay AUR helper and packages"
