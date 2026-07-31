@@ -69,6 +69,18 @@
       "checksum": {
         "hash": "c32c574c5fb61caac44b7e1c239c60baec0929a96f99922ce16776ca72a4dad6"
       }
+    },
+    {
+      "name": "hatch-kits",
+      "source": "github-release",
+      "repository": "knothhe/hatch-kits",
+      "tag": "v0.0.1",
+      "asset": "hatch-domain-scout-0.0.1-chrome.zip",
+      "description": "Hatch Kits",
+      "checksum": {
+        "algorithm": "sha256",
+        "hash": "0d8478b251840e1f1d5b53716663b4c218fb3642cc8ee2e4b8cd90b56d9ca424"
+      }
     }
   ]
 }

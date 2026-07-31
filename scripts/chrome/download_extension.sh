@@ -40,6 +40,7 @@ while [[ $# -gt 0 ]]; do
             echo
             echo "Behavior:"
             echo "  - Downloads and extracts Chrome extensions with checksum verification"
+            echo "  - Downloads private GitHub release assets through the authenticated gh CLI"
             echo "  - Automatically deletes source archive files after successful extraction"
             echo "  - Use -k/--keep to preserve source files if needed"
             echo
@@ -96,6 +97,34 @@ download_file() {
         return 0
     else
         print_error "Failed to download: $url"
+        return 1
+    fi
+}
+
+# Function to download an asset from a private GitHub release
+download_github_release_asset() {
+    local repository="$1"
+    local tag="$2"
+    local asset="$3"
+    local output_file="$4"
+
+    print_header "Downloading private release asset: $(basename "$output_file")"
+
+    if ! gh auth status --hostname github.com >/dev/null 2>&1; then
+        print_error "GitHub CLI is not authenticated"
+        print_error "Run: gh auth login --hostname github.com"
+        return 1
+    fi
+
+    if gh release download "$tag" \
+        --repo "$repository" \
+        --pattern "$asset" \
+        --output "$output_file" \
+        --clobber; then
+        print_success "Download completed: $(basename "$output_file")"
+        return 0
+    else
+        print_error "Failed to download $asset from $repository release $tag"
         return 1
     fi
 }
@@ -222,12 +251,21 @@ get_checksum_from_json() {
 # Main download function
 download_extension() {
     local name="$1"
-    local url="$2"
+    local download_source="$2"
+    local url="$3"
+    local repository="$4"
+    local tag="$5"
+    local asset="$6"
 
     print_simple_title "Processing Extension: $name"
 
     # Get file extension
-    local extension=$(get_file_extension "$url" "$name")
+    local artifact_reference="$url"
+    if [[ "$download_source" == "github-release" ]]; then
+        artifact_reference="$asset"
+    fi
+    local extension
+    extension=$(get_file_extension "$artifact_reference" "$name")
     local source_file="${name}.${extension}"
     local source_path="${DOWNLOAD_DIR}/${source_file}"
     local extract_dir="${DOWNLOAD_DIR}/${name}"
@@ -243,10 +281,31 @@ download_extension() {
         return 0
     fi
 
-    # Download the file
-    if ! download_file "$url" "$source_path"; then
-        return 1
-    fi
+    # Download the file using the configured source
+    case "$download_source" in
+        url)
+            if [[ -z "$url" ]]; then
+                print_error "Missing URL for extension: $name"
+                return 1
+            fi
+            if ! download_file "$url" "$source_path"; then
+                return 1
+            fi
+            ;;
+        github-release)
+            if [[ -z "$repository" || -z "$tag" || -z "$asset" ]]; then
+                print_error "Missing repository, tag, or asset for private extension: $name"
+                return 1
+            fi
+            if ! download_github_release_asset "$repository" "$tag" "$asset" "$source_path"; then
+                return 1
+            fi
+            ;;
+        *)
+            print_error "Unsupported download source '$download_source' for extension: $name"
+            return 1
+            ;;
+    esac
 
     # Calculate checksum
     print_header "Calculating checksum"
@@ -262,9 +321,14 @@ download_extension() {
     local existing_checksum=$(get_checksum_from_json "$name")
 
     if [[ -z "$existing_checksum" || "$existing_checksum" == "null" || "$existing_checksum" == "" ]]; then
-        # No checksum exists, update the JSON
-        print_header "No existing checksum found, updating JSON"
-        update_checksum_in_json "$name" "$calculated_checksum"
+        if [[ "$download_source" == "github-release" ]]; then
+            print_error "Private GitHub release assets require a checksum in $CONFIG_FILE"
+            return 1
+        else
+            # No checksum exists, update the JSON for public downloads
+            print_header "No existing checksum found, updating JSON"
+            update_checksum_in_json "$name" "$calculated_checksum"
+        fi
     else
         # Verify checksum
         if [[ "$calculated_checksum" == "$existing_checksum" ]]; then
@@ -307,11 +371,9 @@ main() {
     print_header "Download Directory: $DOWNLOAD_DIR"
 
     # Check dependencies
-    local deps=("curl" "unzip")
-    if command -v jq >/dev/null 2>&1; then
-        deps+=("jq")
-    else
-        print_warning "jq not found - JSON manipulation will be limited"
+    local deps=("curl" "unzip" "jq")
+    if jq -e '.extensions[] | select((.source // "url") == "github-release")' "$CONFIG_FILE" >/dev/null 2>&1; then
+        deps+=("gh")
     fi
     if ! check_dependencies "${deps[@]}"; then
         print_error "Please install missing dependencies"
@@ -325,37 +387,32 @@ main() {
     fi
 
     # Parse extensions from JSON and download each one
-    if command -v jq >/dev/null 2>&1; then
-        local extensions=()
-        while IFS= read -r name; do
-            extensions+=("$name")
-        done < <(jq -r '.extensions[].name' "$CONFIG_FILE")
+    local success_count=0
+    local total_count=0
+    local extension_config
 
-        local urls=()
-        while IFS= read -r url; do
-            urls+=("$url")
-        done < <(jq -r '.extensions[].url' "$CONFIG_FILE")
+    while IFS= read -r extension_config; do
+        local name download_source url repository tag asset
+        name=$(jq -r '.name' <<< "$extension_config")
+        download_source=$(jq -r '.source // "url"' <<< "$extension_config")
+        url=$(jq -r '.url // empty' <<< "$extension_config")
+        repository=$(jq -r '.repository // empty' <<< "$extension_config")
+        tag=$(jq -r '.tag // empty' <<< "$extension_config")
+        asset=$(jq -r '.asset // empty' <<< "$extension_config")
 
-        local success_count=0
-        local total_count=${#extensions[@]}
-
-        for ((i=0; i<total_count; i++)); do
-            if download_extension "${extensions[i]}" "${urls[i]}"; then
-                success_count=$((success_count + 1))
-            fi
-        done
-
-        print_title "Download Summary"
-        print_success "Successfully processed: $success_count/$total_count extensions"
-
-        if [[ $success_count -eq $total_count ]]; then
-            print_success "All extensions downloaded and verified successfully!"
-        else
-            print_warning "Some extensions failed to process"
-            return 1
+        total_count=$((total_count + 1))
+        if download_extension "$name" "$download_source" "$url" "$repository" "$tag" "$asset"; then
+            success_count=$((success_count + 1))
         fi
+    done < <(jq -c '.extensions[]' "$CONFIG_FILE")
+
+    print_title "Download Summary"
+    print_success "Successfully processed: $success_count/$total_count extensions"
+
+    if [[ $success_count -eq $total_count ]]; then
+        print_success "All extensions downloaded and verified successfully!"
     else
-        print_error "jq is required for JSON parsing"
+        print_warning "Some extensions failed to process"
         return 1
     fi
 }
