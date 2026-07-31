@@ -60,7 +60,7 @@ help:
 	@echo "Available targets:"
 	@echo "  download_chrome_extensions   - Download all Chrome extensions"
 	@echo "  force_download_chrome_extensions - Force re-download all Chrome extensions"
-	@echo "  update_chrome_extensions     - Download extensions without a checksum"
+	@echo "  update_chrome_extensions     - Download extensions without a checksum or local installation"
 	@echo "  select_chrome_extensions     - Select and download Chrome extensions"
 	@echo "  install_pacman_packages      - Install Arch Linux pacman packages"
 	@echo "  install_yay_packages         - Install Yay AUR helper and packages"

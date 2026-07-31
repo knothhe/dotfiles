@@ -33,7 +33,7 @@ while [[ $# -gt 0 ]]; do
             echo "                          Default: $DEFAULT_DOWNLOAD_DIR"
             echo "  -f, --force           Force re-download even if files exist"
             echo "  -m, --missing-checksum"
-            echo "                         Only download extensions without a checksum"
+            echo "                         Download extensions without a checksum or local installation"
             echo "  -k, --keep            Keep source archive files after extraction"
             echo "                          Default: delete source files after successful extraction"
             echo "  -h, --help            Show this help message"
@@ -52,7 +52,7 @@ while [[ $# -gt 0 ]]; do
             echo "  $0 -d ~/Downloads/extensions          # Use custom download directory"
             echo "  $0 --directory /tmp/chrome-extensions # Use temporary directory"
             echo "  $0 -f                                 # Force re-download all extensions"
-            echo "  $0 -m                                 # Download only extensions without a checksum"
+            echo "  $0 -m                                 # Download extensions missing a checksum or installation"
             echo "  $0 -d ~/ext -f                        # Force re-download to custom directory"
             echo "  $0 -k                                 # Keep source files after extraction"
             echo "  $0 -f -k                              # Force re-download and keep source files"
@@ -117,6 +117,11 @@ download_github_release_asset() {
     local output_file="$4"
 
     print_header "Downloading private release asset: $(basename "$output_file")"
+
+    if ! check_dependencies gh; then
+        print_error "GitHub CLI is required to download private release assets"
+        return 1
+    fi
 
     if ! gh auth status --hostname github.com >/dev/null 2>&1; then
         print_error "GitHub CLI is not authenticated"
@@ -281,12 +286,25 @@ download_extension() {
     # Create download directory
     ensure_directory "$DOWNLOAD_DIR"
 
-    # Check if extension is already installed and handle based on force flag
-    if [[ -f "$extract_dir/manifest.json" && "$FORCE_DOWNLOAD" == false && "$ONLY_MISSING_CHECKSUM" == false ]]; then
-        print_success "Extension $name already installed, skipping download"
-        print_success "Use -f/--force to re-download"
-        echo
-        return 0
+    # Read the configured checksum before deciding whether this extension needs an update.
+    local existing_checksum
+    existing_checksum=$(get_checksum_from_json "$name")
+
+    # Skip installed extensions unless forced. In update mode, an installed
+    # extension is skipped only when it also has a configured checksum.
+    if [[ -f "$extract_dir/manifest.json" && "$FORCE_DOWNLOAD" == false ]]; then
+        if [[ "$ONLY_MISSING_CHECKSUM" == false ]]; then
+            print_success "Extension $name already installed, skipping download"
+            print_success "Use -f/--force to re-download"
+            echo
+            return 0
+        fi
+
+        if [[ -n "$existing_checksum" && "$existing_checksum" != "null" ]]; then
+            print_success "Extension $name is installed and has a checksum, skipping download"
+            echo
+            return 0
+        fi
     fi
 
     # Download the file using the configured source
@@ -324,9 +342,6 @@ download_extension() {
     fi
 
     print_success "Calculated checksum: $calculated_checksum"
-
-    # Get existing checksum from JSON
-    local existing_checksum=$(get_checksum_from_json "$name")
 
     if [[ -z "$existing_checksum" || "$existing_checksum" == "null" || "$existing_checksum" == "" ]]; then
         # Trust the authenticated download on first use and persist its checksum.
@@ -382,15 +397,11 @@ main() {
 
     local extension_query='.extensions[]'
     if [[ "$ONLY_MISSING_CHECKSUM" == true ]]; then
-        extension_query='.extensions[] | select((.checksum.hash // "") == "")'
-        print_header "Mode: Extensions without a checksum only"
+        print_header "Mode: Extensions without a checksum or local installation"
     fi
 
     # Check dependencies
     local deps=("curl" "unzip" "jq")
-    if jq -e "$extension_query | select((.source // \"url\") == \"github-release\")" "$CONFIG_FILE" >/dev/null 2>&1; then
-        deps+=("gh")
-    fi
     if ! check_dependencies "${deps[@]}"; then
         print_error "Please install missing dependencies"
         return 1
@@ -417,11 +428,6 @@ main() {
     done < <(jq -c "$extension_query" "$CONFIG_FILE")
 
     print_title "Download Summary"
-
-    if [[ $total_count -eq 0 && "$ONLY_MISSING_CHECKSUM" == true ]]; then
-        print_success "All extensions already have a checksum"
-        return 0
-    fi
 
     print_success "Successfully processed: $success_count/$total_count extensions"
 
