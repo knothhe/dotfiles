@@ -39,7 +39,7 @@
 	helper = libsecret
 {{- end }}
 
-[includeIf "gitdir:~/Workspace/Github/{{ .userDev }}/"]
+[includeIf "gitdir:~/Workspace/Programming/{{ .userDev }}/"]
 	path = ~/.config/git/config_dev
 {{- if eq .chezmoi.os "darwin" }}
 [includeIf "gitdir:~/Workspace/Work/"]

@@ -14,6 +14,7 @@ Host github.com
     User git
     AddKeysToAgent yes
     IdentityFile ~/.ssh/github_knothhe
+    IdentitiesOnly yes
     {{- if eq .chezmoi.os "darwin" }}
     UseKeychain yes
     {{- end }}
@@ -22,6 +23,7 @@ Host github0.com
     HostName github.com
     User git
     IdentityFile ~/.ssh/github_dev
+    IdentitiesOnly yes
 
 Host tencent_tokyo
     HostName {{ pass "guanglai/vps/tencent/tokyo_debian_ip" }}
