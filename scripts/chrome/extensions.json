@@ -74,12 +74,9 @@
       "name": "hatch-kits",
       "source": "github-release",
       "repository": "knothhe/hatch-kits",
-      "tag": "v0.0.7",
-      "asset": "hatch-kits-0.0.7-chrome.zip",
-      "description": "Hatch Kits",
-      "checksum": {
-        "hash": "f97ac9200a4e3173537ac8fdceba65b26d080b8028f520ad48dfce230754a759"
-      }
+      "tag": "v0.0.19",
+      "asset": "hatch-kits-0.0.19-chrome.zip",
+      "description": "Hatch Kits"
     }
   ]
 }
