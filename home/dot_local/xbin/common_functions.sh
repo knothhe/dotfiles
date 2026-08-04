@@ -187,12 +187,28 @@ print_failure() {
 # GIT OPERATIONS
 # ============================================================================
 
-# Generic git sync function - Sync any git repository to remote
+# Check whether a git worktree has no staged, unstaged, or untracked changes
+# Usage: git_worktree_is_clean <directory_path>
+git_worktree_is_clean() {
+    local repository_dir="$1"
+
+    [ -z "$(git -C "$repository_dir" status --porcelain --untracked-files=all)" ]
+}
+
+# Generic git sync function - Commit local changes, sync, and verify repository state
 # Usage: git_sync <directory_path> [repository_name]
 git_sync() {
     local sync_dir="$1"
     local repo_name="${2:-$(basename "$sync_dir")}"
     local commit_message="Auto-sync $repo_name changes $(date '+%Y-%m-%d %H:%M:%S')"
+    local git_dir
+    local upstream
+    local ahead
+    local behind
+
+    if ! check_dependencies git; then
+        return 1
+    fi
 
     # Check if directory exists
     if [ ! -d "$sync_dir" ]; then
@@ -200,56 +216,89 @@ git_sync() {
         return 1
     fi
 
-    # Check if it's a git repository
-    if [ ! -d "$sync_dir/.git" ]; then
+    # Check if it is a git worktree. This also supports worktrees whose .git is a file.
+    if [ "$(git -C "$sync_dir" rev-parse --is-inside-work-tree 2>/dev/null)" != "true" ]; then
         print_error "Not a git repository in $sync_dir"
         return 1
     fi
 
     print_progress "Syncing $repo_name repository..."
 
-    # Change to the repository directory
-    local current_dir
-    current_dir=$(pwd)
-    cd "$sync_dir" || return 1
-
-    # Check if there are uncommitted changes
-    if ! git diff-index --quiet HEAD --; then
+    # Commit staged, unstaged, and untracked files before contacting the remote.
+    if ! git_worktree_is_clean "$sync_dir"; then
         print_progress "Detected uncommitted changes. Adding and committing..."
 
-        # Add all modified and untracked files
-        git add -A
-
-        # Commit changes
-        if git commit -m "$commit_message"; then
-            print_success "Changes committed successfully"
-        else
-            print_warning "No changes to commit (possibly empty commit)"
+        if ! git -C "$sync_dir" add -A; then
+            print_error "Failed to stage local changes"
+            return 1
         fi
+
+        if git -C "$sync_dir" diff --cached --quiet; then
+            print_error "Local changes remain, but Git could not stage them"
+            return 1
+        fi
+
+        if ! git -C "$sync_dir" commit -m "$commit_message"; then
+            print_error "Failed to commit local changes"
+            return 1
+        fi
+
+        print_success "Changes committed successfully"
     else
         print_info "Status" "No changes to commit"
     fi
 
-    # Pull latest changes from remote repository
+    if ! git_worktree_is_clean "$sync_dir"; then
+        print_error "Repository is not clean after committing local changes"
+        return 1
+    fi
+
+    upstream=$(git -C "$sync_dir" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null) || {
+        print_error "Current branch has no upstream configured"
+        return 1
+    }
+
+    # Rebase local commits on the upstream branch to avoid an automatic merge commit.
     print_progress "Pulling latest changes from remote repository..."
-    if git pull; then
-        print_success "Successfully pulled latest changes from remote"
-    else
-        print_warning "Failed to pull latest changes. Continuing with sync..."
+    if ! git -C "$sync_dir" pull --rebase; then
+        git_dir=$(git -C "$sync_dir" rev-parse --absolute-git-dir 2>/dev/null)
+        if [ -n "$git_dir" ] && { [ -d "$git_dir/rebase-merge" ] || [ -d "$git_dir/rebase-apply" ]; }; then
+            git -C "$sync_dir" rebase --abort >/dev/null 2>&1 || true
+        fi
+        print_error "Failed to pull and rebase latest changes"
+        return 1
+    fi
+    print_success "Successfully pulled latest changes from remote"
+
+    if ! git_worktree_is_clean "$sync_dir"; then
+        print_error "Repository is not clean after pulling remote changes"
+        return 1
     fi
 
     # Push to remote repository
     print_progress "Pushing changes to remote repository..."
-    if git push; then
-        print_success "Successfully pushed changes to remote"
-    else
+    if ! git -C "$sync_dir" push; then
         print_error "Failed to push changes"
-        cd "$current_dir"
+        return 1
+    fi
+    print_success "Successfully pushed changes to remote"
+
+    if ! read -r ahead behind < <(git -C "$sync_dir" rev-list --left-right --count "HEAD...$upstream"); then
+        print_error "Failed to verify synchronization with $upstream"
         return 1
     fi
 
-    # Return to original directory
-    cd "$current_dir"
+    if [ "$ahead" -ne 0 ] || [ "$behind" -ne 0 ]; then
+        print_error "Repository is not synchronized with $upstream (ahead: $ahead, behind: $behind)"
+        return 1
+    fi
+
+    if ! git_worktree_is_clean "$sync_dir"; then
+        print_error "Repository still contains uncommitted changes after synchronization"
+        return 1
+    fi
+
+    print_success "$repo_name is clean and synchronized with $upstream"
     return 0
 }
 

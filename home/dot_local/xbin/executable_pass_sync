@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # pass sync command implementation
-# Function: Sync local password repository to remote, auto-commit uncommitted changes
+# Function: Commit local changes, sync the password repository, and verify a clean state
 
 # Source common functions
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,8 +12,7 @@ PASS_DIR="$HOME/.password-store"
 print_title "Syncing Password Store"
 
 if git_sync "$PASS_DIR" "password store"; then
-    # Success messages are handled by git_sync function
-    true
+    print_completion_conditional
 else
     print_failure "Password store sync"
     exit 1
