@@ -1,6 +1,6 @@
 # Set default proxy address here to avoid prompt.
 # Example: THE_PROXY="127.0.0.1:7890"
-export THE_PROXY="127.0.0.1:7890"
+export THE_PROXY="127.0.0.1:42000"
 
 # --- Helper Function: Show Usage ---
 _show_proxy_usage() {
