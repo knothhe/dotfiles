@@ -121,7 +121,7 @@ chezmoi add --template ~/.config/xshrc/envs
 ## 📋 Key Scripts & Tools
 
 - **`x_pic`**: Cross-platform clipboard image management with format conversion and upload
-- **`pass_fzf`**: Interactive password selection with generation
+- **`pass_fzf`**: Interactive password selection with generation; press `Ctrl-T` to switch between single and batch modes
 - **`x_clone`**: Interactive repository cloning with branch support
 - **`x_sharding`**: Database table sharding tool for SQL schema transformation
 - **`x_sync`**: Master synchronization orchestrator

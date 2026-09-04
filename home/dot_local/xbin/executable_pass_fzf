@@ -13,7 +13,10 @@ source "$SCRIPT_DIR/common_functions.sh"
 # CONSTANTS AND CONFIGURATION
 # ============================================================================
 
-readonly SCRIPT_VERSION="2.0.0"
+readonly SCRIPT_VERSION="2.1.0"
+readonly MIN_FZF_MAJOR=0
+readonly MIN_FZF_MINOR=51
+readonly MIN_FZF_VERSION="${MIN_FZF_MAJOR}.${MIN_FZF_MINOR}.0"
 readonly DEFAULT_PASSWORD_LENGTH=16
 readonly MIN_PASSWORD_LENGTH=4
 readonly MAX_PASSWORD_LENGTH=64
@@ -30,6 +33,25 @@ check_script_dependencies() {
         print_error "Please install missing dependencies"
         print_info "macOS" "brew install pass fzf fd pwgen"
         print_info "Ubuntu/Debian" "sudo apt install pass fzf fd pwgen"
+        safe_exit 1
+    fi
+
+    local fzf_version
+    local fzf_major
+    local fzf_minor
+
+    fzf_version=$(fzf --version | awk '{print $1}')
+    IFS=. read -r fzf_major fzf_minor _ <<< "$fzf_version"
+
+    if [[ ! "$fzf_major" =~ ^[0-9]+$ ]] || [[ ! "$fzf_minor" =~ ^[0-9]+$ ]]; then
+        print_error "Unable to determine fzf version: $fzf_version"
+        safe_exit 1
+    fi
+
+    if [ "$fzf_major" -lt "$MIN_FZF_MAJOR" ] || \
+        { [ "$fzf_major" -eq "$MIN_FZF_MAJOR" ] && [ "$fzf_minor" -lt "$MIN_FZF_MINOR" ]; }; then
+        print_error "fzf $MIN_FZF_VERSION or newer is required for single/multi mode switching"
+        print_info "Installed version" "$fzf_version"
         safe_exit 1
     fi
 }
@@ -863,6 +885,210 @@ handle_existing_entry() {
     esac
 }
 
+print_batch_entries() {
+    local entry
+
+    for entry in "$@"; do
+        echo -e "${BLUE}├${NC} ${CYAN}$entry${NC}"
+    done
+}
+
+handle_batch_edit() {
+    local entries=("$@")
+    local total=${#entries[@]}
+    local succeeded=0
+    local failed=0
+    local failed_entries=()
+    local entry
+    local index=0
+
+    echo
+    print_title "Batch Edit Password Entries"
+    print_info "Selected entries" "$total"
+    print_batch_entries "${entries[@]}"
+    echo
+    print_info "Edit behavior" "Entries will open one at a time in ${EDITOR:-vi}"
+
+    if ! confirm_action "Edit these $total entries sequentially?" "n"; then
+        print_warning "Batch edit cancelled"
+        return 1
+    fi
+
+    for entry in "${entries[@]}"; do
+        ((index++)) || true
+        echo
+        print_separator
+        print_progress "Editing $index of $total: $entry"
+
+        if pass edit "$entry"; then
+            ((succeeded++)) || true
+            print_success "Entry edited: $entry"
+        else
+            ((failed++)) || true
+            failed_entries+=("$entry")
+            print_error "Entry was not changed: $entry"
+        fi
+    done
+
+    echo
+    print_title "Batch Edit Summary"
+    print_info "Result" "Succeeded: $succeeded | Failed or unchanged: $failed"
+
+    if [ "$failed" -gt 0 ]; then
+        print_warning "Entries not changed:"
+        print_batch_entries "${failed_entries[@]}"
+        return 1
+    fi
+
+    print_success_bold "All selected entries were edited successfully"
+    return 0
+}
+
+handle_batch_password_generation() {
+    local entries=("$@")
+    local total=${#entries[@]}
+    local default_length
+    local length
+    local include_symbols
+    local symbols_label
+    local succeeded=0
+    local failed=0
+    local failed_entries=()
+    local entry
+    local pass_args=()
+
+    default_length=$(get_default_length)
+
+    echo
+    print_title "Batch Regenerate Passwords"
+    print_info "Selected entries" "$total"
+    print_batch_entries "${entries[@]}"
+    echo
+    echo -e "${GREEN}Use one password configuration for every selected entry:${NC}"
+    echo
+    echo -e "1) With symbols, $default_length chars ${YELLOW}[default]${NC}"
+    echo -e "2) No symbols, $default_length chars"
+    echo -e "3) Custom length with symbols"
+    echo -e "4) Custom length without symbols"
+    echo -e "5) ${RED}Cancel${NC}"
+    echo
+
+    while true; do
+        echo -e "${BLUE}Select an option (1-5) [default: 1]:${NC}"
+        read -r choice
+        [ -z "$choice" ] && choice="1"
+
+        case "$choice" in
+            1)
+                length="$default_length"
+                include_symbols="true"
+                break
+                ;;
+            2)
+                length="$default_length"
+                include_symbols="false"
+                break
+                ;;
+            3)
+                length=$(prompt_for_length "$default_length")
+                include_symbols="true"
+                break
+                ;;
+            4)
+                length=$(prompt_for_length "$default_length")
+                include_symbols="false"
+                break
+                ;;
+            5)
+                print_warning "Batch password regeneration cancelled"
+                return 1
+                ;;
+            *)
+                print_error "Invalid option. Please select 1-5"
+                ;;
+        esac
+    done
+
+    symbols_label="Yes"
+    if [ "$include_symbols" = "false" ]; then
+        symbols_label="No"
+        pass_args+=(--no-symbols)
+    fi
+    pass_args+=(--in-place)
+
+    echo
+    print_separator
+    print_info "Batch configuration" "Entries: $total | Length: $length | Symbols: $symbols_label"
+    print_warning "This replaces only the first line of every selected entry. Additional attributes are preserved."
+    print_warning "Batch changes are not atomic; successful entries remain changed if a later entry fails."
+    echo
+
+    if ! confirm_action "Regenerate passwords for all $total selected entries?" "n"; then
+        print_warning "Batch password regeneration cancelled"
+        return 1
+    fi
+
+    for entry in "${entries[@]}"; do
+        print_progress "Regenerating password for: $entry"
+
+        # Do not use --clip in batch mode. Multiple pass clipboard timers can
+        # race with one another and leave an unexpected value in the clipboard.
+        if pass generate "${pass_args[@]}" "$entry" "$length" >/dev/null 2>&1; then
+            ((succeeded++)) || true
+            print_success "Password regenerated: $entry"
+        else
+            ((failed++)) || true
+            failed_entries+=("$entry")
+            print_error "Failed to regenerate password: $entry"
+        fi
+    done
+
+    echo
+    print_title "Batch Regeneration Summary"
+    print_info "Result" "Succeeded: $succeeded | Failed: $failed"
+    print_info "Clipboard" "No generated passwords were copied"
+
+    if [ "$failed" -gt 0 ]; then
+        print_warning "Failed entries:"
+        print_batch_entries "${failed_entries[@]}"
+        return 1
+    fi
+
+    print_success_bold "All selected passwords were regenerated successfully"
+    return 0
+}
+
+handle_batch_action_menu() {
+    local entries=("$@")
+
+    echo
+    print_title "Batch Actions"
+    print_info "Selected entries" "${#entries[@]}"
+    echo -e "1) Edit selected entries sequentially"
+    echo -e "2) Regenerate selected passwords"
+    echo -e "3) ${RED}Cancel${NC}"
+    echo
+    echo -e "${BLUE}Select an option (1-3):${NC}"
+    read -r choice
+
+    case "$choice" in
+        1)
+            handle_batch_edit "${entries[@]}"
+            ;;
+        2)
+            handle_batch_password_generation "${entries[@]}"
+            ;;
+        3|"")
+            print_warning "Batch action cancelled"
+            return 1
+            ;;
+        *)
+            print_error "Invalid option. Please select 1-3"
+            return 1
+            ;;
+    esac
+}
+
 handle_delete_entry() {
     local entry="$1"
 
@@ -1330,125 +1556,179 @@ main() {
         safe_exit 1
     fi
 
-    # Create secure temporary file and set up cleanup
+    # Create secure temporary files and set up cleanup.
     local temp_file
-    temp_file=$(create_temp_file)
-    trap 'rm -f "$temp_file"' EXIT
+    local entries_file
+    local mode_file
+    temp_file=$(create_temp_file "$TEMP_FILE_PREFIX")
+    entries_file=$(create_temp_file "$TEMP_FILE_PREFIX")
+    mode_file=$(create_temp_file "$TEMP_FILE_PREFIX")
+    trap 'cleanup "$temp_file" "$entries_file" "$mode_file"' EXIT
 
-    # Build entries list with process substitution (performance optimization)
+    # Keep separate lists so the create marker can be hidden in multi-select mode.
+    printf '%s\n' "$password_entries" > "$entries_file"
     {
         echo "$CREATE_NEW_ENTRY_MARKER"
-        echo "$password_entries"
+        cat "$entries_file"
     } > "$temp_file"
+    printf 'single\n' > "$mode_file"
 
-    # Use fzf for interactive selection with multiple key bindings
+    local single_prompt="[SINGLE] Select password entry: "
+    local multi_prompt="[MULTI] Filter and mark entries: "
+    local single_header="^T multi | ⏎ copy | ^E edit | ^G regenerate | ^R rename | ^D delete | ^V view"
+    local multi_header="^T single | Tab mark | Shift-Tab unmark | ^A all matches | ^X clear | ⏎ actions | ^E edit | ^G regenerate"
+    local toggle_mode_binding
+    local select_all_binding
+    local clear_selection_binding
+
+    toggle_mode_binding="ctrl-t:transform:
+        if [ \"\$FZF_PROMPT\" = \"$single_prompt\" ]; then
+            printf '%s\\n' \"execute-silent(printf multi > '$mode_file')+change-multi+reload-sync(cat '$entries_file')+change-prompt($multi_prompt)+change-header($multi_header)\"
+        else
+            printf '%s\\n' \"execute-silent(printf single > '$mode_file')+clear-multi+change-multi(0)+reload-sync(cat '$temp_file')+change-prompt($single_prompt)+change-header($single_header)\"
+        fi"
+
+    # In multi mode, Ctrl-A means exactly "all current matches": discard any
+    # hidden selections made under an earlier query before selecting matches.
+    select_all_binding="ctrl-a:transform:
+        if [ \"\$FZF_PROMPT\" = \"$multi_prompt\" ]; then
+            printf '%s\\n' 'clear-multi+select-all'
+        else
+            printf '%s\\n' 'beginning-of-line'
+        fi"
+
+    clear_selection_binding="ctrl-x:transform:
+        if [ \"\$FZF_PROMPT\" = \"$multi_prompt\" ]; then
+            printf '%s\\n' 'clear-multi'
+        else
+            printf '%s\\n' 'ignore'
+        fi"
+
+    # Start in single-select mode. Ctrl-T changes the mode without leaving fzf
+    # and preserves the current query while the input list is reloaded.
     local fzf_result
+    local fzf_status=0
     fzf_result=$(cat "$temp_file" | fzf \
         --expect=enter,ctrl-e,ctrl-g,ctrl-r,ctrl-d,ctrl-v \
-        --prompt="Select password entry: " \
+        --no-multi \
+        --bind="$toggle_mode_binding" \
+        --bind="$select_all_binding" \
+        --bind="$clear_selection_binding" \
+        --prompt="$single_prompt" \
         --height=80% \
         --layout=reverse \
         --border \
         --preview="if [ {} = '$CREATE_NEW_ENTRY_MARKER' ]; then echo 'Create a new password entry with custom name'; else echo 'Entry: {}'; fi" \
         --preview-window=down:1 \
-        --header="⏎ copy | ^E edit | ^G regenerate | ^R rename | ^D delete | ^V view")
+        --header="$single_header") || fzf_status=$?
 
-    # Parse fzf result (first line is key, second line is selected entry)
-    local key
-    local selected_entry
-    key=$(echo "$fzf_result" | head -1)
-    selected_entry=$(echo "$fzf_result" | tail -1)
-
-    # Check if user made a selection
-    if [ -n "$selected_entry" ]; then
-        # Handle special "Create New" entry
-        if [ "$selected_entry" = "$CREATE_NEW_ENTRY_MARKER" ]; then
-            case "$key" in
-                "enter")
-                    if ! handle_new_entry "$selected_entry"; then
-                        # handle_new_entry already prints appropriate error message
-                        safe_exit 1
-                    fi
-                    ;;
-                "ctrl-e"|"ctrl-g"|"ctrl-r"|"ctrl-d"|"ctrl-v")
-                    print_error "Cannot edit, regenerate, rename, delete, or view for a new entry creation"
-                    print_info "Solution" "Use Enter to create a new entry"
-                    safe_exit 1
-                    ;;
-                *)
-                    print_warning "Invalid operation for new entry creation"
-                    exit 0
-                    ;;
-            esac
-        else
-            # Handle existing entries using optimized entry_exists function
-            if entry_exists "$selected_entry"; then
-                case "$key" in
-                    "enter")
-                        handle_existing_entry "$selected_entry" "copy"
-                        ;;
-                    "ctrl-e")
-                        handle_existing_entry "$selected_entry" "edit"
-                        ;;
-                    "ctrl-g")
-                        handle_existing_entry "$selected_entry" "generate"
-                        ;;
-                    "ctrl-r")
-                        handle_existing_entry "$selected_entry" "rename"
-                        ;;
-                    "ctrl-d")
-                        handle_existing_entry "$selected_entry" "delete"
-                        ;;
-                    "ctrl-v")
-                        handle_existing_entry "$selected_entry" "view"
-                        ;;
-                    *)
-                        print_warning "No selection made"
-                        exit 0
-                        ;;
-                esac
-            else
-                case "$key" in
-                    "enter")
-                        print_error "Entry '$selected_entry' does not exist"
-                        print_info "Solution" "Select '$CREATE_NEW_ENTRY_MARKER' to create a new entry or select an existing entry"
-                        safe_exit 1
-                        ;;
-                    "ctrl-e")
-                        print_error "Cannot edit non-existent entry: $selected_entry"
-                        print_warning "Select '$CREATE_NEW_ENTRY_MARKER' to create a new entry"
-                        safe_exit 1
-                        ;;
-                    "ctrl-g")
-                        handle_new_entry "$selected_entry"
-                        ;;
-                    "ctrl-r")
-                        print_error "Cannot rename non-existent entry: $selected_entry"
-                        print_warning "Select '$CREATE_NEW_ENTRY_MARKER' to create a new entry"
-                        safe_exit 1
-                        ;;
-                    "ctrl-d")
-                        print_error "Cannot delete non-existent entry: $selected_entry"
-                        print_warning "Select '$CREATE_NEW_ENTRY_MARKER' to create a new entry"
-                        safe_exit 1
-                        ;;
-                    "ctrl-v")
-                        print_error "Cannot view non-existent entry: $selected_entry"
-                        print_warning "Select '$CREATE_NEW_ENTRY_MARKER' to create a new entry"
-                        safe_exit 1
-                        ;;
-                    *)
-                        print_warning "No selection made"
-                        exit 0
-                        ;;
-                esac
-            fi
-        fi
-    else
-        print_warning "No selection made"
-        exit 0
+    if [ "$fzf_status" -eq 130 ]; then
+        print_warning "Selection cancelled"
+        return 0
+    elif [ "$fzf_status" -ne 0 ]; then
+        print_error "fzf exited with status $fzf_status"
+        return "$fzf_status"
     fi
+
+    # fzf prints the action key first, followed by every selected entry.
+    # Use a read loop instead of mapfile for compatibility with macOS Bash 3.2.
+    local key
+    local output_line
+    local output_line_number=0
+    local selected_entries=()
+
+    while IFS= read -r output_line; do
+        if [ "$output_line_number" -eq 0 ]; then
+            key="$output_line"
+        elif [ -n "$output_line" ]; then
+            selected_entries+=("$output_line")
+        fi
+        ((output_line_number++)) || true
+    done <<< "$fzf_result"
+
+    if [ ${#selected_entries[@]} -eq 0 ]; then
+        print_warning "No selection made"
+        return 0
+    fi
+
+    local selection_mode
+    selection_mode=$(tr -d '\r\n' < "$mode_file")
+
+    # The create marker is intentionally absent from multi mode. Handle it
+    # before validating normal password entries.
+    if [ "$selection_mode" = "single" ] && \
+        [ ${#selected_entries[@]} -eq 1 ] && \
+        [ "${selected_entries[0]}" = "$CREATE_NEW_ENTRY_MARKER" ]; then
+        if [ "$key" = "enter" ]; then
+            handle_new_entry "$CREATE_NEW_ENTRY_MARKER"
+            return $?
+        fi
+
+        print_error "Only Enter can be used with new entry creation"
+        print_info "Solution" "Press Enter to create a new password entry"
+        return 1
+    fi
+
+    local entry
+    for entry in "${selected_entries[@]}"; do
+        if ! entry_exists "$entry"; then
+            print_error "Password entry no longer exists: $entry"
+            return 1
+        fi
+    done
+
+    if [ "$selection_mode" = "multi" ]; then
+        case "$key" in
+            "enter")
+                handle_batch_action_menu "${selected_entries[@]}"
+                ;;
+            "ctrl-e")
+                handle_batch_edit "${selected_entries[@]}"
+                ;;
+            "ctrl-g")
+                handle_batch_password_generation "${selected_entries[@]}"
+                ;;
+            "ctrl-r"|"ctrl-d"|"ctrl-v")
+                print_warning "Rename, delete, and view are disabled in multi-select mode"
+                print_info "Available batch actions" "Enter: action menu | Ctrl-E: edit | Ctrl-G: regenerate"
+                return 0
+                ;;
+            *)
+                print_warning "No batch action selected"
+                return 0
+                ;;
+        esac
+        return $?
+    fi
+
+    local selected_entry="${selected_entries[0]}"
+    case "$key" in
+        "enter")
+            handle_existing_entry "$selected_entry" "copy"
+            ;;
+        "ctrl-e")
+            handle_existing_entry "$selected_entry" "edit"
+            ;;
+        "ctrl-g")
+            handle_existing_entry "$selected_entry" "generate"
+            ;;
+        "ctrl-r")
+            handle_existing_entry "$selected_entry" "rename"
+            ;;
+        "ctrl-d")
+            handle_existing_entry "$selected_entry" "delete"
+            ;;
+        "ctrl-v")
+            handle_existing_entry "$selected_entry" "view"
+            ;;
+        *)
+            print_warning "No action selected"
+            return 0
+            ;;
+    esac
 }
 
 # Run main function
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
