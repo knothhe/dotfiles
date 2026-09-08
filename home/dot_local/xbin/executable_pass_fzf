@@ -671,6 +671,8 @@ handle_new_entry() {
 
         local new_entry_placeholder="<TYPE NEW ENTRY NAME>"
 
+        local entry_input
+        local entry_input_status=0
         entry_input=$(
             {
                 echo "$new_entry_placeholder"
@@ -698,7 +700,18 @@ handle_new_entry() {
                 --height=25% \
                 --header="Tab: copy to query | Enter: confirm | Esc: cancel" \
                 --layout=reverse
-        )
+        ) || entry_input_status=$?
+
+        # fzf returns 1 when Enter is pressed with a query that has no
+        # matching candidate. That is the expected path for a brand-new entry,
+        # and --print-query still writes the entered name to stdout.
+        if [ "$entry_input_status" -eq 130 ]; then
+            print_warning "New entry creation cancelled"
+            return 0
+        elif [ "$entry_input_status" -ne 0 ] && [ "$entry_input_status" -ne 1 ]; then
+            print_error "fzf exited with status $entry_input_status"
+            return "$entry_input_status"
+        fi
 
         # Get actual input (first line is the query content)
         entry_input=$(echo "$entry_input" | head -1)
