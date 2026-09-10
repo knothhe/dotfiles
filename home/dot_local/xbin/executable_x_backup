@@ -1,0 +1,91 @@
+#!/bin/bash
+
+# x_backup - Create a date-suffixed backup using cp
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common_functions.sh"
+
+show_usage() {
+    cat <<EOF
+x_backup - Create a backup copy with a date suffix
+
+USAGE:
+    x_backup <file-or-directory> [suffix]
+    x_backup --format <date-format> <file-or-directory>
+
+EXAMPLES:
+    x_backup ~/.zshrc                 # Creates ~/.zshrc.20260910
+    x_backup config.yml before-edit   # Creates config.yml.before-edit
+    x_backup --format %Y%m%d_%H%M config.yml
+
+EOF
+}
+
+main() {
+    local date_format="%Y%m%d"
+    local custom_suffix=""
+    local source_path=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)
+                show_usage
+                return 0
+                ;;
+            -f|--format)
+                [[ $# -ge 2 ]] || { print_error "Missing date format"; return 1; }
+                date_format="$2"
+                shift 2
+                ;;
+            --)
+                shift
+                break
+                ;;
+            -* )
+                print_error "Unknown option: $1"
+                show_usage
+                return 1
+                ;;
+            *)
+                if [[ -z "$source_path" ]]; then
+                    source_path="$1"
+                elif [[ -z "$custom_suffix" ]]; then
+                    custom_suffix="$1"
+                else
+                    print_error "Too many arguments"
+                    show_usage
+                    return 1
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    if [[ -z "$source_path" ]]; then
+        show_usage
+        return 1
+    fi
+
+    if [[ ! -e "$source_path" ]]; then
+        print_error "Path does not exist: $source_path"
+        return 1
+    fi
+
+    local suffix="$custom_suffix"
+    if [[ -z "$suffix" ]]; then
+        suffix="$(date +"$date_format")"
+    fi
+    local backup_path="${source_path}.${suffix}"
+
+    if [[ -d "$source_path" ]]; then
+        cp -pR "$source_path" "$backup_path"
+    else
+        cp -p "$source_path" "$backup_path"
+    fi
+
+    print_success "Backup created: $backup_path"
+}
+
+main "$@"
