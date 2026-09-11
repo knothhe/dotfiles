@@ -63,11 +63,11 @@
       }
     },
     {
-      "name": "vibe-reading",
-      "url": "https://github.com/knothhe/vibe-reading/releases/download/v1.34.0/vibe-readingextension-1.34.0-chrome.zip",
-      "description": "Vibe Reading - feel the vibe, no hassles",
+      "name": "read-frog",
+      "url": "https://github.com/mengxi-ream/read-frog/releases/download/v1.46.9/read-frogextension-1.46.9-chrome.zip",
+      "description": "Read Frog - Language Learning & Translate",
       "checksum": {
-        "hash": "c32c574c5fb61caac44b7e1c239c60baec0929a96f99922ce16776ca72a4dad6"
+        "hash": "f7fcccdca7238ddef510f0fdfc3768fd9a853db8f121b849e0a4a10dfb638d76"
       }
     },
     {
