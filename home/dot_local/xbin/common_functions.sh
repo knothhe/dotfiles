@@ -553,6 +553,96 @@ copy_to_clipboard() {
     fi
 }
 
+# Clear the system clipboard without adding a newline.
+clear_clipboard() {
+    if is_linux; then
+        if command -v wl-copy >/dev/null 2>&1; then
+            printf '' | wl-copy
+        elif command -v xclip >/dev/null 2>&1; then
+            printf '' | xclip -selection clipboard
+        else
+            print_error "No clipboard utility found (wl-copy or xclip). Please install wl-clipboard or xclip."
+            return 1
+        fi
+    elif is_darwin; then
+        if command -v pbcopy >/dev/null 2>&1; then
+            pbcopy < /dev/null
+        else
+            print_error "pbcopy not found"
+            return 1
+        fi
+    else
+        print_error "Unsupported platform"
+        return 1
+    fi
+}
+
+# Clear text after a delay only when it is still the active clipboard content.
+# Usage: schedule_sensitive_clipboard_clear <text> [seconds]
+schedule_sensitive_clipboard_clear() {
+    local text="$1"
+    local clear_time="${2:-${CLIPBOARD_CLEAR_TIME:-${PASSWORD_STORE_CLIP_TIME:-45}}}"
+
+    if [[ ! "$clear_time" =~ ^[0-9]+$ ]] || [ "$clear_time" -eq 0 ]; then
+        print_error "Clipboard clear time must be a positive number of seconds"
+        return 1
+    fi
+
+    (
+        sleep "$clear_time"
+        if [ "$(get_from_clipboard 2>/dev/null)" = "$text" ]; then
+            clear_clipboard
+        fi
+    ) >/dev/null 2>&1 &
+    disown
+}
+
+# Copy confidential text while advertising its sensitivity when the clipboard
+# implementation supports it. This is a hint for clipboard managers, not an
+# access-control mechanism. The content is cleared after 45 seconds by default.
+copy_sensitive_to_clipboard() {
+    local text="$1"
+
+    if [[ -z "$text" ]]; then
+        print_error "No text provided to copy"
+        return 1
+    fi
+
+    if is_darwin; then
+        if ! command -v pbcopy >/dev/null 2>&1; then
+            print_error "pbcopy not found"
+            return 1
+        fi
+
+        # AppKit's JavaScript bridge is not reliable across macOS releases for
+        # the concealed pasteboard marker. Use the native clipboard utility so
+        # password copying remains dependable; the scheduled clear still
+        # limits how long the value is retained.
+        printf '%s' "$text" | pbcopy || return 1
+    elif is_linux; then
+        if command -v wl-copy >/dev/null 2>&1; then
+            # --sensitive adds the x-kde-passwordManagerHint MIME type.
+            # Older wl-copy releases do not provide this option.
+            if wl-copy --help 2>&1 | grep -q -- '--sensitive'; then
+                printf '%s' "$text" | wl-copy --sensitive || return 1
+            else
+                printf '%s' "$text" | wl-copy || return 1
+            fi
+        elif command -v xclip >/dev/null 2>&1; then
+            # X11/xclip has no interoperable equivalent sensitive marker.
+            printf '%s' "$text" | xclip -selection clipboard || return 1
+        else
+            print_error "No clipboard utility found (wl-copy or xclip). Please install wl-clipboard or xclip."
+            return 1
+        fi
+    else
+        print_error "Unsupported platform"
+        return 1
+    fi
+
+    schedule_sensitive_clipboard_clear "$text"
+}
+
 # Get text from clipboard (cross-platform)
 get_from_clipboard() {
     if is_linux; then

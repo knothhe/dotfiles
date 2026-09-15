@@ -240,9 +240,6 @@ generate_password_with_options() {
         pass_args+=(--force)
     fi
 
-    # Add clip to copy to clipboard
-    pass_args+=(--clip)
-
     local action_text="Creating new password entry"
     [ "$is_update" = "true" ] && action_text="Updating existing password entry"
 
@@ -257,7 +254,8 @@ generate_password_with_options() {
     print_progress "$action_text for: $entry"
     print_info "Configuration" "$(IFS=', '; echo "${config_parts[*]}")"
 
-    if pass generate "${pass_args[@]}" "$entry" "$length" >/dev/null 2>&1; then
+    if pass generate "${pass_args[@]}" "$entry" "$length" >/dev/null 2>&1 && \
+        copy_sensitive_to_clipboard "$(pass show "$entry" | head -n 1)"; then
         echo
         echo -e "${GREEN}✓${NC} ${BOLD}$action_text successful!${NC}"
         echo -e "${BLUE}└${NC} Entry: ${CYAN}$entry${NC} | Auto-clear in ${YELLOW}${CLIPBOARD_CLEAR_TIME}s${NC}"
@@ -336,7 +334,7 @@ generate_custom_password_with_pwgen() {
 
             if pass insert -m "$entry" < "$temp_file" >/dev/null 2>&1; then
                 # Copy to clipboard
-                copy_to_clipboard "$generated_password"
+                copy_sensitive_to_clipboard "$generated_password"
 
                 rm -f "$temp_file"
                 echo
@@ -402,7 +400,7 @@ generate_custom_password_with_pwgen() {
 
         if pass insert -m "$entry" < "$temp_file" >/dev/null 2>&1; then
             # Copy to clipboard
-            copy_to_clipboard "$generated_password"
+            copy_sensitive_to_clipboard "$generated_password"
 
             rm -f "$temp_file"
             echo
@@ -798,8 +796,7 @@ handle_existing_entry() {
 
     case "$action" in
         "copy")
-            # Original behavior - copy password
-            if pass -c "$entry" >/dev/null 2>&1; then
+            if copy_sensitive_to_clipboard "$(pass show "$entry" | head -n 1)"; then
                 echo
                 echo -e "${GREEN}✓${NC} ${BOLD}Password copied to clipboard!${NC}"
                 echo -e "${BLUE}└${NC} Entry: ${CYAN}$entry${NC} | Auto-clear in ${YELLOW}${CLIPBOARD_CLEAR_TIME}s${NC}"
@@ -1147,7 +1144,7 @@ handle_view_all_attributes() {
                 echo
 
                 if confirm_action "Reveal and copy password?" "n"; then
-                    if copy_to_clipboard "$password"; then
+                    if copy_sensitive_to_clipboard "$password"; then
                         echo
                         echo -e "${GREEN}✓${NC} ${BOLD}Password revealed and copied!${NC}"
                         echo -e "${BLUE}├${NC} Length: ${YELLOW}${#password} characters${NC}"
@@ -1203,7 +1200,7 @@ handle_view_all_attributes() {
                     echo
 
                     if confirm_action "Reveal and copy this attribute?" "n"; then
-                        if copy_to_clipboard "$copy_value"; then
+                        if copy_sensitive_to_clipboard "$copy_value"; then
                             echo
                             echo -e "${GREEN}✓${NC} ${BOLD}Attribute revealed and copied!${NC}"
                             echo -e "${BLUE}├${NC} ${BOLD}$display_name:${NC} ${YELLOW}$copy_value${NC}"
@@ -1241,7 +1238,7 @@ handle_view_all_attributes() {
                         all_content="$all_content"$'\n'"$attr"
                     done
 
-                    if copy_to_clipboard "$all_content"; then
+                    if copy_sensitive_to_clipboard "$all_content"; then
                         echo
                         print_title "All Attributes Revealed"
 
