@@ -10,13 +10,9 @@
       }
     },
     {
-      "name": "browserpass",
-      "url": "https://github.com/browserpass/browserpass-extension/releases/download/3.11.0/browserpass-chromium-3.11.0.zip",
-      "description": "Browserpass client extension",
-      "checksum": {
-        "algorithm": "sha256",
-        "hash": "576f509107353aeb822cc10684384bc34beb76300f1a6d2bd1ddcd59994c3701"
-      }
+      "name": "browserpasspine",
+      "url": "https://github.com/knothhe/browserpasspine-extension/releases/download/v0.1.6/browserpasspine-chromium-0.1.6.zip",
+      "description": "Browserpasspine client extension"
     },
     {
       "name": "obsidian-clipper",
