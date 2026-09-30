@@ -114,6 +114,7 @@
         "name": "Magpie openai",
         "description": "Connect to a custom endpoint compatible with the OpenAI Chat Completions API",
         "enabled": true,
+        "apiKey": "magpie",
         "baseURL": "http://127.0.0.1:3425/v1",
         "providerOptions": {
           "reasoning": {
