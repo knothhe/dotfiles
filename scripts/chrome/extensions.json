@@ -10,11 +10,6 @@
       }
     },
     {
-      "name": "browserpasspine",
-      "url": "https://github.com/knothhe/browserpasspine-extension/releases/download/v0.1.6/browserpasspine-chromium-0.1.6.zip",
-      "description": "Browserpasspine client extension"
-    },
-    {
       "name": "obsidian-clipper",
       "url": "https://github.com/obsidianmd/obsidian-clipper/releases/download/0.12.0/obsidian-web-clipper-0.12.0-chrome.zip",
       "description": "The official Web Clipper extension for Obsidian",
@@ -59,20 +54,34 @@
       }
     },
     {
-      "name": "read-frog",
-      "url": "https://github.com/mengxi-ream/read-frog/releases/download/v1.46.9/read-frogextension-1.46.9-chrome.zip",
-      "description": "Read Frog - Language Learning & Translate",
+      "name": "readomi",
+      "url": "https://github.com/knothhe/readomi/releases/download/v1.2.0/readomiextension-1.2.0-chrome.zip",
+      "description": "Readomi — A local-first reading companion with web, paragraph and subtitle translation",
       "checksum": {
-        "hash": "f7fcccdca7238ddef510f0fdfc3768fd9a853db8f121b849e0a4a10dfb638d76"
+        "hash": "f55818c03e96b445c10223418dba7724f900207b90a175ae4176a626126e2eeb"
       }
     },
     {
       "name": "hatch-kits",
       "source": "github-release",
       "repository": "knothhe/hatch-kits",
-      "tag": "v0.0.19",
-      "asset": "hatch-kits-0.0.19-chrome.zip",
-      "description": "Hatch Kits"
+      "tag": "v0.0.27",
+      "asset": "hatch-kits-0.0.27-chrome.zip",
+      "description": "Hatch Kits",
+      "checksum": {
+        "hash": "8c9643a31ce156db28cf3372dc10b250593007803cb57e379cee09d1334f6612"
+      }
+    },
+    {
+      "name": "browserpasspine",
+      "source": "github-release",
+      "repository": "knothhe/browserpasspine-extension",
+      "tag": "v0.1.6",
+      "asset": "browserpasspine-chromium-0.1.6.zip",
+      "description": "Browserpasspine client extension",
+      "checksum": {
+        "hash": "2785c7ffec93d2993c46253bda99dc6c06713963ebff7872a343a85adc2a0ec9"
+      }
     }
   ]
 }

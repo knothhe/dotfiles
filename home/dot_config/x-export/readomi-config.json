@@ -1,0 +1,68 @@
+{
+  "format": "readomi-config",
+  "config": {
+    "language": {
+      "sourceCode": "auto",
+      "targetCode": "cmn",
+      "level": "intermediate"
+    },
+    "appearance": {
+      "colorTheme": "terra"
+    },
+    "providersConfig": [
+      {
+        "id": "openai-default",
+        "name": "OpenAI",
+        "enabled": true,
+        "provider": "openai",
+        "model": "gpt-6-luna"
+      },
+      {
+        "id": "74843f26-6c2f-40dd-be6d-068683dcd9d7",
+        "name": "Custom Provider",
+        "enabled": true,
+        "provider": "openai-compatible",
+        "api": "openai-responses",
+        "baseURL": "http://127.0.0.1:3425/v1",
+        "model": "codex/gpt-6-luna",
+        "body": {
+          "reasoning": {
+            "effort": "none"
+          }
+        },
+        "connectionCheck": {
+          "ok": true,
+          "checkedAt": 1790863556455
+        }
+      }
+    ],
+    "reading": {
+      "wordPrefixEmphasis": false
+    },
+    "translate": {
+      "providerId": "74843f26-6c2f-40dd-be6d-068683dcd9d7",
+      "mode": "bilingual",
+      "page": {
+        "shortcut": "Alt+E"
+      },
+      "enableAIContentAware": false,
+      "customPromptsConfig": {
+        "promptId": null,
+        "patterns": []
+      },
+      "translationNodeStyle": {
+        "preset": "line",
+        "isCustom": false,
+        "customCSS": null
+      }
+    },
+    "features": {
+      "hoverTranslation": true,
+      "hoverHotkey": "backtick",
+      "modeShortcut": "",
+      "subtitlesShortcut": "",
+      "videoSubtitles": false,
+      "subtitleMode": "bilingual"
+    }
+  }
+}
