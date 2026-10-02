@@ -6,8 +6,12 @@
       "targetCode": "cmn",
       "level": "intermediate"
     },
+    "ui": {
+      "language": "browser"
+    },
     "appearance": {
-      "colorTheme": "terra"
+      "colorTheme": "terra",
+      "mode": "system"
     },
     "providersConfig": [
       {
@@ -23,6 +27,7 @@
         "enabled": true,
         "provider": "openai-compatible",
         "api": "openai-responses",
+        "apiKey": "magpie",
         "baseURL": "http://127.0.0.1:3425/v1",
         "model": "codex/gpt-6-luna",
         "body": {
@@ -32,7 +37,7 @@
         },
         "connectionCheck": {
           "ok": true,
-          "checkedAt": 1790863556455
+          "checkedAt": 1790940327463
         }
       }
     ],
@@ -45,7 +50,7 @@
       "page": {
         "shortcut": "Alt+E"
       },
-      "enableAIContentAware": false,
+      "enableAIContentAware": true,
       "customPromptsConfig": {
         "promptId": null,
         "patterns": []
@@ -61,7 +66,15 @@
       "hoverHotkey": "backtick",
       "modeShortcut": "",
       "subtitlesShortcut": "",
-      "videoSubtitles": false,
+      "videoSubtitles": true,
+      "subtitleStyle": {
+        "preset": "study",
+        "fontSize": 40,
+        "position": {
+          "x": 50,
+          "y": 88
+        }
+      },
       "subtitleMode": "bilingual"
     }
   }

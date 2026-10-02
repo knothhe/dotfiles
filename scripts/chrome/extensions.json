@@ -29,11 +29,11 @@
     },
     {
       "name": "extension-manager",
-      "url": "https://github.com/JasonGrass/auto-extension-manager/releases/download/v0.5.27/extension-manager-0.5.27-chrome.zip",
+      "url": "https://github.com/JasonGrass/auto-extension-manager/releases/download/v0.6.2/extension-manager-0.6.2-chrome.zip",
       "description": "A chrome extension manager where you can add rules",
       "checksum": {
         "algorithm": "sha256",
-        "hash": "947d41583d5c95e6f6146992eedb2c67eca304dc2f00fc6a2745857d34516d53"
+        "hash": "f902b71e02f8eceae40c71c827c44add03db7278fbd801df384126ad08016f0d"
       }
     },
     {
