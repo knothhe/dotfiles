@@ -6,7 +6,7 @@ A comprehensive dotfiles repository providing automated setup, synchronization u
 
 ## ✨ Key Features
 
-- **🔧 Shell Environment**: Modular bash/zsh configuration with proxy management
+- **🔧 Shell Environment**: Modular bash/zsh configuration
 - **🔄 Git Synchronization**: Auto-sync utilities for pass, Obsidian, Rime, and general repos
 - **🤖 AI Integration**: Pre-configured Claude Code and OpenCode environments (BigModel primary)
 - **🖼️ Image Tools**: Clipboard image management and cloud upload (x_pic)
@@ -88,13 +88,6 @@ make download_chrome_extensions     # Download Chrome extensions
 ```
 
 ## 🔧 Configuration
-
-### Proxy Manager
-```bash
-proxyon [host:port] [username:password]  # Activate proxy
-proxyoff                                # Deactivate proxy
-proxyinfo                               # Check status
-```
 
 ### Shell Environment
 - **Modular structure**: Configuration in `~/.config/xshrc/` with separate components

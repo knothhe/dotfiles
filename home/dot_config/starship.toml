@@ -1,6 +1,6 @@
 add_newline = true
 command_timeout = 200
-format = "[$custom$directory$git_branch$git_status]($style)$character"
+format = "[$directory$git_branch$git_status]($style)$character"
 
 [character]
 error_symbol = "[✗](bold cyan)"
@@ -30,9 +30,3 @@ stashed    = ""
 staged     = ""
 renamed    = ""
 deleted    = ""
-
-[custom.proxy]
-when = 'env | grep -q "^ALL_PROXY="'
-format = "[$symbol]($style) "
-symbol = "§"
-style = "bold yellow"

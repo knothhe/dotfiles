@@ -77,11 +77,8 @@ chezmoi forget <file>  # Remove from management
 
 ### Shell Integration
 ```bash
-# Source the shell config to test proxy functions
+# Reload the shell configuration
 source ~/.zshrc  # or ~/.bashrc
-proxyon [host:port] [username:password]
-proxyoff
-proxyinfo
 ```
 
 ### Local Vision Helper

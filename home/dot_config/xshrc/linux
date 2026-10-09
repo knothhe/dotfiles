@@ -19,13 +19,13 @@ if ! ssh-add -l &>/dev/null; then
   fi
 fi
 
-# x_update function - prompt and execute system update with proxy management
+# x_omarchy_update function - prompt and execute system update
 x_omarchy_update() {
-  echo "This will execute: proxyon && omarchy-update && proxyoff && pacman -Syu --config /etc/pacman.d/archlinuxcn"
+  echo "This will execute: omarchy-update && sudo pacman -Syu --config /etc/pacman.d/archlinuxcn"
   read -p "Do you want to continue? (y/N): " -n 1 -r
   echo
   if [[ $REPLY =~ ^[Yy]$ ]]; then
-    proxyon && omarchy-update && proxyoff && sudo pacman -Syu --config /etc/pacman.d/archlinuxcn
+    omarchy-update && sudo pacman -Syu --config /etc/pacman.d/archlinuxcn
   else
     echo "Update cancelled."
   fi
