@@ -1,3 +1,4 @@
 .config/s3-image-port/config.json
 .config/s3-image-port/
 .config/xshrc/proxy
+.local/xbin/x_pic

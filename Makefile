@@ -41,9 +41,6 @@ enable_darwin_skhd:
 	@skhd --start-service
 
 # Global npm/pnpm package installation
-install_piclist:
-	@pnpm install -g piclist
-
 install_ai_tools:
 	@pnpm install -g opencode-ai
 
@@ -68,7 +65,6 @@ help:
 	@echo "  install_darwin_packages      - Install macOS packages"
 	@echo "  config_darwin                - Configure macOS (BROWSER=chrome by default)"
 	@echo "  enable_darwin_skhd           - Enable macOS skhd service"
-	@echo "  install_piclist              - Install PicList globally via pnpm"
 	@echo "  install_ai_tools             - Install opencode globally via pnpm"
 	@echo "  install_lazyvim              - Install LazyVim Neovim configuration"
 	@echo "  add_hypr_source              - Add custom.conf source to Hyprland config"

@@ -9,7 +9,6 @@ A comprehensive dotfiles repository providing automated setup, synchronization u
 - **🔧 Shell Environment**: Modular bash/zsh configuration
 - **🔄 Git Synchronization**: Auto-sync utilities for pass, Obsidian, Rime, and general repos
 - **🤖 AI Integration**: Pre-configured Claude Code and OpenCode environments (BigModel primary)
-- **🖼️ Image Tools**: Clipboard image management and cloud upload (x_pic)
 - **🔐 Password Management**: Interactive fzf-based password interface (pass_fzf)
 - **⌨️ Input Methods**: Complete fcitx5 configuration with Catppuccin theme
 - **🖥️ Terminal**: Ghostty configuration with CJK support
@@ -70,7 +69,6 @@ x_sync         # Master sync orchestrator
 ### Development Tools
 ```bash
 x_clone        # Interactive repo cloning
-x_pic          # Clipboard image management
 pass_fzf       # Interactive password manager
 x_sharding     # Database table sharding tool
 x_opencode     # OpenCode launcher
@@ -113,7 +111,6 @@ chezmoi add --template ~/.config/xshrc/envs
 
 ## 📋 Key Scripts & Tools
 
-- **`x_pic`**: Cross-platform clipboard image management with format conversion and upload
 - **`pass_fzf`**: Interactive password selection with generation; press `Ctrl-T` to switch between single and batch modes
 - **`x_clone`**: Interactive repository cloning with branch support
 - **`x_sharding`**: Database table sharding tool for SQL schema transformation
