@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Dotfiles Home Prompt mark</title>
+  <desc id="desc">A house with a dot and terminal prompt carved into its silhouette. The background and all internal cutouts are transparent. The mark inherits the current text color.</desc>
+  <path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="
+    M 231 119
+    Q 256 96 281 119
+    L 390 222
+    Q 402 233 402 250
+    V 364
+    Q 402 400 366 400
+    H 146
+    Q 110 400 110 364
+    V 250
+    Q 110 233 122 222
+    Z
+    M 270 202
+    A 14 14 0 1 1 242 202
+    A 14 14 0 1 1 270 202
+    Z
+    M 180 249
+    Q 188 241 196 249
+    L 240 293
+    Q 249 302 240 311
+    L 196 355
+    Q 188 363 180 355
+    Q 172 347 180 339
+    L 217 302
+    L 180 265
+    Q 172 257 180 249
+    Z
+    M 283 334
+    H 327
+    A 12 12 0 0 1 327 358
+    H 283
+    A 12 12 0 0 1 283 334
+    Z
+  "/>
+</svg>
