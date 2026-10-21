@@ -1,0 +1,9 @@
+#!/bin/bash
+# QEMU's virtual GPU exposes OpenGL 4.2; Ghostty requires 4.3+.
+set -e
+source "$HOME/.local/xbin/common_functions.sh"
+if grep -qw 'omarchy.qemu=1' /proc/cmdline; then
+  export LIBGL_ALWAYS_SOFTWARE=1
+  export GALLIUM_DRIVER=llvmpipe
+fi
+exec /usr/bin/ghostty "$@"

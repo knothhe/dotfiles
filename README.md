@@ -144,3 +144,13 @@ Pre-configured skills for enhanced AI-assisted development.
 ## 📚 Documentation
 
 See `AGENTS.md` for detailed development guidance and API documentation for custom utilities.
+
+### Omarchy terminal configuration
+
+Ghostty loads Omarchy defaults before `personal.conf`; Linux uses a 12 pt font.
+`xdg-terminals.list` selects Ghostty, and the user terminal wrappers call
+`/usr/bin/xdg-terminal-exec` directly to bypass stale `/usr/local/bin` overrides.
+The desktop entry launches through `ghostty-launch`, which uses llvmpipe only
+when the kernel command line contains `omarchy.qemu=1`: this VM GPU exposes
+OpenGL 4.2, below Ghostty's 4.3 requirement. Other Linux machines retain their
+normal rendering backend. Foot remains available with a 16 pt fallback font.

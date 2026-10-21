@@ -67,5 +67,5 @@ help:
 	@echo "  enable_darwin_skhd           - Enable macOS skhd service"
 	@echo "  install_ai_tools             - Install opencode globally via pnpm"
 	@echo "  install_lazyvim              - Install LazyVim Neovim configuration"
-	@echo "  add_hypr_source              - Add custom.conf source to Hyprland config"
+	@echo "  add_hypr_source              - Load custom.lua after Omarchy defaults"
 	@echo "  help                         - Show this help"

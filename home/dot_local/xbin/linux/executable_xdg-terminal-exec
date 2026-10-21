@@ -1,0 +1,5 @@
+#!/bin/bash
+# Bypass /usr/local/bin overrides and honor xdg-terminals.list.
+set -e
+source "$HOME/.local/xbin/common_functions.sh"
+exec /usr/bin/xdg-terminal-exec "$@"

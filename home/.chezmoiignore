@@ -13,6 +13,11 @@
 .config/fcitx5/**
 .config/fontconfig/**
 .config/hypr/**
+.config/foot/**
+.config/xdg-terminals.list
+.local/share/applications/com.mitchellh.ghostty.desktop
+.local/xbin/xdg-terminal-exec
+.config/omarchy/**
 .local/share/fcitx5/**
 .local/xbin/hypr/**
 .local/xbin/linux/**
