@@ -28,8 +28,8 @@ o.bind("SUPER + ALT + SHIFT + F", "File manager (cwd)", "uwsm-app -- nautilus --
 hl.unbind("SUPER + SHIFT + O")
 o.bind("SUPER + SHIFT + O", "Obsidian", "omarchy-launch-or-focus ^obsidian$ \"uwsm-app -- obsidian -disable-gpu --enable-wayland-ime\"")
 
+-- Disable the default password-manager shortcut.
 hl.unbind("SUPER + SHIFT + SLASH")
-o.bind("SUPER + SHIFT + SLASH", "Passwords", "omarchy-launch-tui ~/.local/xbin/pass_fzf")
 
 hl.unbind("SUPER + SHIFT + T")
 o.bind("SUPER + SHIFT + T", "Activity", "omarchy-launch-tui btop")
