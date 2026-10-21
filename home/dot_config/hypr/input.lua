@@ -15,3 +15,6 @@ do
   end
 end
 -- END TRY OMARCHY PINCH DEVICE
+
+-- Keep Shift press/release keysyms consistent for Rime.
+hl.config({ input = { kb_options = "compose:caps" } })

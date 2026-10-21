@@ -84,3 +84,6 @@ hl.unbind("XF86MonBrightnessUp")
 o.bind("XF86MonBrightnessUp", "Monitor brightness up", "~/.local/xbin/linux/monitor_brightness up", { locked = true, repeating = true })
 hl.unbind("XF86MonBrightnessDown")
 o.bind("XF86MonBrightnessDown", "Monitor brightness down", "~/.local/xbin/linux/monitor_brightness down", { locked = true, repeating = true })
+
+-- Toggle the input method, like Ctrl+Space.
+o.bind("ALT + SHIFT + SPACE", "Toggle input method", "fcitx5-remote -t")
