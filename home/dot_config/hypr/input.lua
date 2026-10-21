@@ -1,5 +1,6 @@
 -- Override only the keyboard option; retain Omarchy's other input defaults.
-hl.config({ input = { kb_options = "ctrl:swapcaps" } })
+-- Disabled in the VM because Windows already swaps Ctrl and Caps Lock.
+-- hl.config({ input = { kb_options = "ctrl:swapcaps" } })
 
 -- BEGIN TRY OMARCHY PINCH DEVICE
 -- Try Omarchy's virtual pinch touchpad only carries Windows pinch gestures.
