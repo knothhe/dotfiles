@@ -1,0 +1,10 @@
+#!/bin/bash
+
+set -e
+
+# Interactive setup and daily cloud synchronization for Rime user dictionaries.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/common_functions.sh" || exit 1
+check_dependencies python3 || exit 1
+exec python3 -B "$SCRIPT_DIR/rime_sync_cloud.py" \
+    --common "$SCRIPT_DIR/common_functions.sh" --runner "$SCRIPT_DIR/rime_sync_cloud" "$@"

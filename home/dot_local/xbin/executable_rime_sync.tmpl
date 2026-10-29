@@ -1,33 +1,165 @@
 #!/bin/bash
 
+set -e
+
 # Rime input method sync command implementation
 
 # Source common functions
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/common_functions.sh"
+source "$SCRIPT_DIR/common_functions.sh" || exit 1
 
 print_title "Syncing Rime Input Method"
 
 {{- if eq .chezmoi.os "darwin" }}
 print_progress "Syncing Rime configuration on macOS..."
-cd ~/Library/Rime || {
-    print_error "Rime directory not found: ~/Library/Rime"
-    exit 1
-}
-DYLD_LIBRARY_PATH="/Library/Input Methods/Squirrel.app/Contents/Frameworks" "/Library/Input Methods/Squirrel.app/Contents/MacOS/Squirrel" --quit
-DYLD_LIBRARY_PATH="/Library/Input Methods/Squirrel.app/Contents/Frameworks" "/Library/Input Methods/Squirrel.app/Contents/MacOS/rime_dict_manager" -s > /dev/null 2>&1
-print_success "Rime configuration synced successfully"
-{{- else if eq .chezmoi.os "linux" }}
-print_progress "Syncing Rime configuration on Linux..."
-# archlinux install qdbus use pacman
-# sudo pacman -S qt5-tools
-if ! command -v qdbus >/dev/null 2>&1; then
-    print_error "qdbus not found. Please install qt5-tools: sudo pacman -S qt5-tools"
+SQUIRREL_APP="/Library/Input Methods/Squirrel.app"
+SQUIRREL_BIN="$SQUIRREL_APP/Contents/MacOS/Squirrel"
+DICT_MANAGER="$SQUIRREL_APP/Contents/MacOS/rime_dict_manager"
+RIME_USER_DIR="${RIME_USER_DIR:-$HOME/Library/Rime}"
+
+if ! check_dependencies "$SQUIRREL_BIN" "$DICT_MANAGER" pgrep open sleep; then
     exit 1
 fi
-qdbus org.fcitx.Fcitx5 /controller org.fcitx.Fcitx.Controller1.SetConfig fcitx://config/addon/rime/deploy ''
-qdbus org.fcitx.Fcitx5 /controller org.fcitx.Fcitx.Controller1.SetConfig fcitx://config/addon/rime/sync ''
-print_success "Rime configuration synced successfully"
+cd "$RIME_USER_DIR" || {
+    print_error "Rime directory not found: $RIME_USER_DIR"
+    exit 1
+}
+
+# Only restore Squirrel if it was running before this command.
+SQUIRREL_PIDS=$(pgrep -u "$UID" -x Squirrel) || {
+    process_status=$?
+    if [ "$process_status" -ne 1 ]; then
+        print_error "Failed to check whether Squirrel is running."
+        exit 1
+    fi
+}
+
+restore_squirrel() {
+    if ! open -a "$SQUIRREL_APP"; then
+        print_error "Failed to restart Squirrel. Please reopen $SQUIRREL_APP."
+        return 1
+    fi
+    # Launch Services accepts the request before the input method has started.
+    if ! wait_for_command 50 0.1 pgrep -u "$UID" -x Squirrel >/dev/null 2>&1; then
+        print_error "Squirrel did not start after the restart request. Please reopen $SQUIRREL_APP."
+        return 1
+    fi
+}
+
+restore_squirrel_on_exit() {
+    local sync_status=$?
+    trap - EXIT
+    if ! restore_squirrel; then
+        if [ "$sync_status" -eq 0 ]; then
+            sync_status=1
+        fi
+    fi
+    exit "$sync_status"
+}
+
+if [ -n "$SQUIRREL_PIDS" ]; then
+    # --quit only sends a termination request; wait for the original processes
+    # to release their user dictionaries before running the dictionary manager.
+    trap restore_squirrel_on_exit EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    if ! DYLD_LIBRARY_PATH="$SQUIRREL_APP/Contents/Frameworks" "$SQUIRREL_BIN" --quit; then
+        print_error "Failed to quit Squirrel; sync was not started."
+        exit 1
+    fi
+    for squirrel_pid in $SQUIRREL_PIDS; do
+        if ! wait_for_process_exit "$squirrel_pid"; then
+            print_error "Timed out waiting for Squirrel to quit; sync was not started."
+            exit 1
+        fi
+    done
+fi
+
+if ! DYLD_LIBRARY_PATH="$SQUIRREL_APP/Contents/Frameworks" "$DICT_MANAGER" -s; then
+    print_error "Rime user dictionary sync failed. See the command output above."
+    exit 1
+fi
+
+if [ -n "$SQUIRREL_PIDS" ]; then
+    trap - EXIT HUP INT TERM
+    restore_squirrel || exit 1
+fi
+print_success "Rime user dictionaries synced locally; cloud transfer is handled separately."
+{{- else if eq .chezmoi.os "linux" }}
+print_progress "Syncing Rime user dictionaries on Linux..."
+RIME_USER_DIR="${RIME_USER_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/fcitx5/rime}"
+
+if ! check_dependencies rime_dict_manager fcitx5-remote fcitx5 pgrep sleep; then
+    print_error "Install librime and fcitx5 (on Debian/Ubuntu, rime_dict_manager is provided by librime-bin)."
+    exit 1
+fi
+cd "$RIME_USER_DIR" || {
+    print_error "Rime directory not found: $RIME_USER_DIR"
+    exit 1
+}
+
+FCITX_PIDS=$(pgrep -u "$UID" -x fcitx5) || {
+    process_status=$?
+    if [ "$process_status" -ne 1 ]; then
+        print_error "Failed to check whether Fcitx5 is running."
+        exit 1
+    fi
+}
+
+restore_fcitx() {
+    if ! fcitx5 -d; then
+        print_error "Failed to restart Fcitx5. Please restart it in your desktop session."
+        return 1
+    fi
+    # The daemon launcher exits successfully before initialization finishes.
+    # --check also queries State(), so success confirms a responsive controller.
+    if ! wait_for_command 50 0.1 fcitx5-remote --check >/dev/null 2>&1; then
+        print_error "Fcitx5 did not become ready after the restart request. Check the desktop session environment."
+        return 1
+    fi
+}
+
+restore_fcitx_on_exit() {
+    local sync_status=$?
+    trap - EXIT
+    if ! restore_fcitx; then
+        if [ "$sync_status" -eq 0 ]; then
+            sync_status=1
+        fi
+    fi
+    exit "$sync_status"
+}
+
+if [ -n "$FCITX_PIDS" ]; then
+    # The Fcitx5 D-Bus sync action starts background maintenance and cannot report
+    # its completion. Release the user dictionaries and use the synchronous CLI.
+    trap restore_fcitx_on_exit EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    if ! fcitx5-remote --check -e; then
+        print_error "Failed to quit Fcitx5; sync was not started. Check the desktop session's D-Bus environment."
+        exit 1
+    fi
+    for fcitx_pid in $FCITX_PIDS; do
+        if ! wait_for_process_exit "$fcitx_pid"; then
+            print_error "Timed out waiting for Fcitx5 to quit; sync was not started."
+            exit 1
+        fi
+    done
+fi
+
+if ! rime_dict_manager -s; then
+    print_error "Rime user dictionary sync failed. See the command output above."
+    exit 1
+fi
+
+if [ -n "$FCITX_PIDS" ]; then
+    trap - EXIT HUP INT TERM
+    restore_fcitx || exit 1
+fi
+print_success "Rime user dictionaries synced locally; cloud transfer is handled separately."
 {{- else }}
 print_error "Unsupported operating system for Rime sync"
 exit 1

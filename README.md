@@ -63,8 +63,8 @@ Automatically detects OS and configures shell environment (`.zshrc` for macOS, `
 ```bash
 pass_sync      # Sync password store
 ob_sync        # Sync Obsidian vault
-rime_sync      # Sync input method config
-x_sync         # Master sync orchestrator
+rime_sync      # Sync Rime user dictionaries with its local sync directory
+rime_sync_cloud setup  # Configure daily Rime cloud sync (cron / launchd)
 ```
 
 ### Development Tools
@@ -117,10 +117,10 @@ chezmoi add --template ~/.config/xshrc/envs
 - **`pass_fzf`**: Interactive password selection with generation; press `Ctrl-T` to switch between single and batch modes
 - **`x_clone`**: Interactive repository cloning with branch support
 - **`x_sharding`**: Database table sharding tool for SQL schema transformation
-- **`x_sync`**: Master synchronization orchestrator
 - **`x_opencode`**: OpenCode launcher with Obsidian workspace integration
 - **`x_launchagent`** (macOS): LaunchAgent management utility
 - **`common_functions.sh`**: Shared utility library for all scripts
+- **`rime_sync_cloud`**: Interactive daily Rime dictionary cloud sync via rclone; see [usage](docs/rime_sync_cloud.md)
 
 ## 🔒 Security
 

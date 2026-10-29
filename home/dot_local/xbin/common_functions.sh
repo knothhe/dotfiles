@@ -394,6 +394,57 @@ create_temp_file() {
 }
 
 # ============================================================================
+# PROCESS OPERATIONS
+# ============================================================================
+
+# Wait for a process to exit without sending it a signal.
+# Usage: wait_for_process_exit <pid> [attempts=50] [interval_seconds=0.1]
+wait_for_process_exit() {
+    local process_pid="$1"
+    local attempts="${2:-50}"
+    local interval="${3:-0.1}"
+    local attempt
+
+    if [[ ! "$process_pid" =~ ^[1-9][0-9]*$ ]] || [[ ! "$attempts" =~ ^[1-9][0-9]*$ ]]; then
+        print_error "Process ID and wait attempts must be positive integers."
+        return 1
+    fi
+
+    for ((attempt = 0; attempt < attempts; attempt++)); do
+        if ! kill -0 "$process_pid" 2>/dev/null; then
+            return 0
+        fi
+        sleep "$interval" || return 1
+    done
+    ! kill -0 "$process_pid" 2>/dev/null
+}
+
+# Retry a command until it succeeds or the attempt limit is reached.
+# Usage: wait_for_command <attempts> <interval_seconds> <command> [arguments...]
+wait_for_command() {
+    local attempts="$1"
+    local interval="$2"
+    local attempt
+    shift 2
+
+    if [[ ! "$attempts" =~ ^[1-9][0-9]*$ ]] ||
+        [[ ! "$interval" =~ ^([0-9]+([.][0-9]+)?|[.][0-9]+)$ ]] || [ "$#" -eq 0 ]; then
+        print_error "Command wait requires positive attempts, a non-negative interval, and a command."
+        return 1
+    fi
+
+    for ((attempt = 0; attempt < attempts; attempt++)); do
+        if "$@"; then
+            return 0
+        fi
+        if [ "$attempt" -lt "$((attempts - 1))" ]; then
+            sleep "$interval" || return 1
+        fi
+    done
+    return 1
+}
+
+# ============================================================================
 # DEPENDENCY CHECKING
 # ============================================================================
 
@@ -493,7 +544,10 @@ prompt_input() {
             echo -e "${BLUE}$prompt${NC}:" >&2
         fi
 
-        read -r input
+        if ! read -r input; then
+            print_error "Input ended before a value was provided." >&2
+            return 1
+        fi
 
         if [ -z "$input" ] && [ -n "$default" ]; then
             echo "$default"
@@ -506,9 +560,9 @@ prompt_input() {
                 return 0
             else
                 if [ -n "$error_message" ]; then
-                    print_error "$error_message"
+                    print_error "$error_message" >&2
                 else
-                    print_error "Invalid input format"
+                    print_error "Invalid input format" >&2
                 fi
             fi
         else
