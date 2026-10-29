@@ -18,7 +18,7 @@
 	email = knothhe@gmail.com
 	signingkey = 2D678B61D0335FDA
 [commit]
-	gpgsign = true
+	gpgsign = {{ if eq .chezmoi.os "linux" }}false{{ else }}true{{ end }}
 [filter "lfs"]
 	clean = git-lfs clean -- %f
 	smudge = git-lfs smudge -- %f
@@ -27,7 +27,7 @@
 [init]
 	defaultBranch = main
 [tag]
-	gpgSign = true
+	gpgSign = {{ if eq .chezmoi.os "linux" }}false{{ else }}true{{ end }}
 [pull]
 	rebase = true
 

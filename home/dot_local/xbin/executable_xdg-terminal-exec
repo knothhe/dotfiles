@@ -1,0 +1,5 @@
+#!/bin/bash
+# Keep shell-launched terminals on the same selector as desktop shortcuts.
+set -e
+source "$HOME/.local/xbin/common_functions.sh"
+exec "$HOME/.local/xbin/linux/xdg-terminal-exec" "$@"

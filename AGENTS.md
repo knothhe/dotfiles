@@ -61,7 +61,7 @@ All scripts source this shared library for consistent UI:
 ### Chezmoi Operations
 ```bash
 chezmoi apply          # Apply all dotfiles
-chezmoi apply ~/.local/xbin/x_pic # Only apply ~/.local/xbin/x_pic in this respository (use mapped path, not source path)
+chezmoi apply ~/.local/xbin/x_eyes # Apply a single command using its mapped target path
 chezmoi execute-template .chezmoi/scripts/run_once_setup.sh.tmpl # For test tmpl file
 chezmoi status         # Check status
 chezmoi diff           # Preview changes
@@ -71,9 +71,9 @@ chezmoi forget <file>  # Remove from management
 ```
 
 **Important**: When modifying files in `home/` directory, always use the **mapped (target) path** with `chezmoi apply`, not the source path in the repository. For example:
-- Source: `home/dot_local/xbin/x_pic`
-- Mapped path: `~/.local/xbin/x_pic`
-- Command: `chezmoi apply ~/.local/xbin/x_pic`
+- Source: `home/dot_local/xbin/executable_x_eyes`
+- Mapped path: `~/.local/xbin/x_eyes`
+- Command: `chezmoi apply ~/.local/xbin/x_eyes`
 
 ### Shell Integration
 ```bash
@@ -102,7 +102,7 @@ Model selection is intentionally configurable:
 - `Makefile` - Root-level build automation with convenient targets for common setup tasks
 - Chrome extension download and management targets
 - Platform-specific package installation (Arch Linux pacman/yay, Flatpak, macOS)
-- Global package installation (PicList, AI tools via pnpm)
+- Global package installation (AI tools via pnpm)
 - Development environment setup (LazyVim installation)
 - System service management (skhd for macOS)
 - Window manager configuration (Hyprland source addition)

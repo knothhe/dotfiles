@@ -1,0 +1,8 @@
+# User overrides survive theme changes. Typography also scales bar icons.
+[font]
+base-size = 15
+
+[bar]
+# 26 * (15 / 12) = 33 logical pixels (rounded).
+size-horizontal = 26
+scale-with-font = true

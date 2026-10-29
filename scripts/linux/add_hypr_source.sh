@@ -1,59 +1,15 @@
 #!/bin/bash
+# Add personal Lua rules after Omarchy defaults without replacing the main config.
+set -euo pipefail
 
-set -eufo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../../home/dot_local/xbin/common_functions.sh"
 
-# Function to add source line to hyprland config if it doesn't exist
-add_source_line() {
-    local source_line="$1"
-    local config_file="$2"
-    local comment="$3"
-    local file_name="$4"
+HYPRLAND_CONFIG="$HOME/.config/hypr/hyprland.lua"
+CUSTOM_CONFIG_PATH="$HOME/.config/hypr/custom.lua"
 
-    if grep -qF "$source_line" "$config_file" 2>/dev/null; then
-        echo "$file_name source line already exists in $config_file"
-        return 0
-    else
-        # Add comment if provided
-        if [[ -n "$comment" ]]; then
-            echo "# $comment" >> "$config_file"
-        fi
-        echo "$source_line" >> "$config_file"
-        echo "Added $file_name source line to $config_file"
-        if [[ -n "$comment" ]]; then
-            echo "  with comment: $comment"
-        fi
-        return 0
-    fi
-}
-
-# Configuration
-HYPRLAND_CONFIG="$HOME/.config/hypr/hyprland.conf"
-CUSTOM_CONFIG_PATH="$HOME/.config/hypr/custom.conf"
-
-# Check if custom config exists
-if [[ ! -f "$CUSTOM_CONFIG_PATH" ]]; then
-    echo "Custom config file not found: $CUSTOM_CONFIG_PATH"
-    exit 1
-fi
-
-# Check if hyprland config exists
-if [[ ! -f "$HYPRLAND_CONFIG" ]]; then
-    echo "Hyprland config file not found: $HYPRLAND_CONFIG"
-    exit 1
-fi
-
-# Create hyprland config file if it doesn't exist
-touch "$HYPRLAND_CONFIG" 2>/dev/null || {
-    echo "Cannot create $HYPRLAND_CONFIG"
-    exit 1
-}
-
-# Source files to add
-SOURCE_LINE="source = ~/.config/hypr/custom.conf"
-COMMENT="Custom configuration overrides"
-
-# Add source line
-add_source_line "$SOURCE_LINE" "$HYPRLAND_CONFIG" "$COMMENT" "custom.conf"
-
-echo "Hyprland configuration updated successfully!"
-echo "Please restart Hyprland for changes to take effect."
+validate_file "$HYPRLAND_CONFIG" "Hyprland Lua configuration"
+validate_file "$CUSTOM_CONFIG_PATH" "Personal window rules"
+ensure_line_in_file 'require("hypr.custom")' "$HYPRLAND_CONFIG"
+print_success "Personal rules load after Omarchy defaults."
+print_info "Validation" "Run hyprctl reload followed by hyprctl configerrors in your Hyprland session."

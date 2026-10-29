@@ -9,7 +9,6 @@ A comprehensive dotfiles repository providing automated setup, synchronization u
 - **🔧 Shell Environment**: Modular bash/zsh configuration
 - **🔄 Git Synchronization**: Auto-sync utilities for pass, Obsidian, Rime, and general repos
 - **🤖 AI Integration**: Pre-configured Claude Code and OpenCode environments (BigModel primary)
-- **🖼️ Image Tools**: Clipboard image management and cloud upload (x_pic)
 - **🔐 Password Management**: Interactive fzf-based password interface (pass_fzf)
 - **⌨️ Input Methods**: Complete fcitx5 configuration with Catppuccin theme
 - **🖥️ Terminal**: Ghostty configuration with CJK support
@@ -70,7 +69,6 @@ rime_sync_cloud setup  # Configure daily Rime cloud sync (cron / launchd)
 ### Development Tools
 ```bash
 x_clone        # Interactive repo cloning
-x_pic          # Clipboard image management
 pass_fzf       # Interactive password manager
 x_sharding     # Database table sharding tool
 x_opencode     # OpenCode launcher
@@ -113,7 +111,6 @@ chezmoi add --template ~/.config/xshrc/envs
 
 ## 📋 Key Scripts & Tools
 
-- **`x_pic`**: Cross-platform clipboard image management with format conversion and upload
 - **`pass_fzf`**: Interactive password selection with generation; press `Ctrl-T` to switch between single and batch modes
 - **`x_clone`**: Interactive repository cloning with branch support
 - **`x_sharding`**: Database table sharding tool for SQL schema transformation
@@ -147,3 +144,13 @@ Pre-configured skills for enhanced AI-assisted development.
 ## 📚 Documentation
 
 See `AGENTS.md` for detailed development guidance and API documentation for custom utilities.
+
+### Omarchy terminal configuration
+
+Ghostty loads Omarchy defaults before `personal.conf`; Linux uses a 12 pt font.
+`xdg-terminals.list` selects Ghostty, and the user terminal wrappers call
+`/usr/bin/xdg-terminal-exec` directly to bypass stale `/usr/local/bin` overrides.
+The desktop entry launches through `ghostty-launch`, which uses llvmpipe only
+when the kernel command line contains `omarchy.qemu=1`: this VM GPU exposes
+OpenGL 4.2, below Ghostty's 4.3 requirement. Other Linux machines retain their
+normal rendering backend. Foot remains available with a 16 pt fallback font.

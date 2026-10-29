@@ -1,0 +1,41 @@
+# Personal appearance and platform overrides; Omarchy defaults load first.
+# Appearance
+# background-opacity = 1.0
+cursor-style = block
+font-codepoint-map = "U+4E00-U+9FFF,U+3400-U+4DBF = LXGW WenKai"
+# Reset inherited font families before declaring personal fallbacks.
+font-family =
+font-family = JetBrains Mono
+font-family = LXGW WenKai
+font-feature = -calt
+{{ if eq .chezmoi.os "linux" -}}
+shell-integration-features = no-cursor,ssh-env
+{{ else -}}
+shell-integration-features = no-cursor
+{{ end -}}
+window-padding-x = 20
+window-padding-y = 2,10
+
+# Keybindings
+# for omarchy SUPER + V as paste action
+keybind = shift+insert=paste_from_clipboard
+
+# os-specific config
+{{- if eq .chezmoi.os "darwin" }}
+font-thicken = true
+font-size = 15
+keybind = global:cmd+grave_accent=toggle_quick_terminal
+macos-titlebar-style = transparent
+quick-terminal-position = top
+theme = Catppuccin Frappe
+window-position-x = 400
+window-position-y = 150
+window-save-state = never
+{{- else if eq .chezmoi.os "linux" }}
+font-size = 12
+# New windows should use the configured size instead of inheriting zoom.
+window-inherit-font-size = false
+
+# Fix general slowness on hyprland (https://github.com/ghostty-org/ghostty/discussions/3224)
+async-backend = epoll
+{{- end }}
