@@ -216,11 +216,12 @@ def validate_settings(settings):
 
 
 def state_paths(settings):
-    identity = json.dumps([str(Path(settings["sync_dir"]).resolve()), settings["remote"],
+    identity = json.dumps(["directional-copy-v1", settings["installation_id"],
+                           str(Path(settings["sync_dir"]).resolve()), settings["remote"],
                            str(Path(settings["rclone_config"]).resolve()), EXCLUDES])
     pair = hashlib.sha256(identity.encode()).hexdigest()[:20]
     state = Path(settings["state_dir"])
-    return state, state / "bisync" / pair
+    return state, state / "runs" / pair
 
 
 def environment_for(settings):
@@ -270,7 +271,7 @@ def verify_installation(settings):
         raise SyncError("installation.yaml 的 installation_id 已改变，请重新执行 setup。")
 
 
-def run_workflow(settings, scheduled=False, resync=False, lock_held=False):
+def run_workflow(settings, scheduled=False, lock_held=False):
     validate_settings(settings)
     state, pair = state_paths(settings)
     ensure_directory(state)
@@ -292,33 +293,37 @@ def run_workflow(settings, scheduled=False, resync=False, lock_held=False):
             if daily_path.exists() and read_json(daily_path).get("date") == today:
                 return False
         ensure_directory(pair)
-        initialized = pair / "initialized.json"
-        if not initialized.exists() and not resync:
-            raise SyncError("bisync 尚未初始化或本机状态已丢失，请执行 rime_sync_cloud resync；不会自动 --resync。")
         environment = environment_for(settings)
         try:
             require_dependencies(settings["rclone"], settings["rime_sync"])
             verify_installation(settings)
             if not Path(settings["rclone_config"]).is_file():
                 raise SyncError("rclone 配置文件不存在，请重新执行 rclone config 和 setup。")
+            sync_directory = Path(settings["sync_dir"])
+            installation_id = settings["installation_id"]
+            own_directory = sync_directory / installation_id
+            own_remote = settings["remote"].rstrip("/") + "/" + installation_id
+            options = ["--config", settings["rclone_config"], "--ask-password=false",
+                       "--exclude", ".DS_Store", "-v"]
+            ensure_directory(sync_directory)
             message("print_title", "Rime Cloud Sync · " + now.strftime("%Y-%m-%d %H:%M:%S"))
-            message("print_progress", "1/3 合并已有快照并导出本机用户词库…")
+            message("print_progress", "1/3 拉取其他设备快照，保留本机 " + installation_id + " 目录…")
+            # Each installation publishes only its own subtree. Never restore the
+            # remote copy of this device over the authoritative local snapshots.
+            command([settings["rclone"], "copy", settings["remote"], str(sync_directory),
+                     "--exclude", "/" + installation_id + "/**",
+                     "--exclude", "/RCLONE_TEST"] + options,
+                    environment, "拉取其他设备快照")
+            message("print_progress", "2/3 合并其他设备词库并导出本机快照…")
             command([settings["rime_sync"]], environment, "本机 Rime 同步")
-            message("print_progress", "2/3 使用 rclone bisync 上传并拉取其他设备快照…")
-            arguments = [
-                settings["rclone"], "bisync", settings["sync_dir"], settings["remote"],
-                "--config", settings["rclone_config"], "--ask-password=false",
-                "--workdir", str(pair), "--exclude", ".DS_Store",
-                "--resilient", "--recover", "--max-lock", "2m", "-v",
-            ]
-            if resync:
-                arguments.extend(["--resync", "--resync-mode", "newer"])
-            command(arguments, environment, "rclone bisync")
-            # Record successful baseline creation even if the final local merge fails.
-            if resync:
-                write_json(initialized, {"created_at": dt.datetime.now().astimezone().isoformat()})
-            message("print_progress", "3/3 合并刚拉回的其他设备用户词库…")
-            command([settings["rime_sync"]], environment, "拉取后的 Rime 合并")
+            if own_directory.is_symlink() or not own_directory.is_dir():
+                raise SyncError("本机快照目录不存在或不是普通目录：" + str(own_directory)
+                                + "；请检查 Rime 导出及 installation_id。")
+            message("print_progress", "3/3 上传本机 " + installation_id + " 目录中的全部快照…")
+            # Copy whole subtrees: dictionaries and filenames can differ across
+            # devices. Copy intentionally retains destination-only files.
+            command([settings["rclone"], "copy", str(own_directory), own_remote] + options,
+                    environment, "上传本机快照")
             completed = dt.datetime.now().astimezone()
             write_json(daily_path, {"date": completed.date().isoformat(), "completed_at": completed.isoformat()})
             write_json(pair / "last-run.json", {"success": True, "time": dt.datetime.now().astimezone().isoformat()})
@@ -392,20 +397,18 @@ def setup(config_path):
     if nested_in(config_path, sync_directory):
         raise SyncError("任务配置必须放在同步目录之外。")
     verify_background_rclone(settings)
-    capabilities = command([rclone, "bisync", "--help"], environment_for(settings), "检查 rclone bisync", capture=True)
-    if any(flag not in capabilities for flag in ("--resync-mode", "--recover", "--resilient", "--max-lock")):
-        raise SyncError("当前 rclone 缺少所需 bisync 参数，请先升级 rclone。")
     message("print_info", "配置预览")
     print(json.dumps({
         "Rime 用户目录": str(user_directory), "本地同步目录": str(sync_directory),
         "设备名": installation_id, "远程目录": remote, "每日时间": daily_time,
+        "本机上传目录": str(sync_directory / installation_id),
         "排除文件": EXCLUDES, "调度方式": "launchd" if platform == "darwin" else "cron",
         "配置文件": str(config_path), "日志": str(state_directory / "sync.log"),
     }, ensure_ascii=False, indent=2), flush=True)
-    message("print_warning", "首次初始化会合并两端文件；同路径冲突使用较新的文件。各设备的 installation_id 必须唯一。")
+    message("print_warning", "各设备的 installation_id 必须唯一；仅上传本机目录，其他设备目录只拉取。")
     if not confirm("保存配置、执行一次同步并安装每日任务？"):
         raise SyncError("未保存配置。")
-    state, pair = state_paths(settings)
+    state, _ = state_paths(settings)
     ensure_directory(state)
     with (state / "workflow.lock").open("a") as lock:
         try:
@@ -415,8 +418,7 @@ def setup(config_path):
         ensure_directory(sync_directory)
         update_installation(user_directory, sync_directory, installation_id)
         write_json(config_path, settings)
-        # First setup explicitly initializes the baseline; background runs never resync.
-        run_workflow(settings, resync=not (pair / "initialized.json").exists(), lock_held=True)
+        run_workflow(settings, lock_held=True)
         hour, minute = (int(value) for value in daily_time.split(":"))
         scheduler.install(platform, RUNNER, config_path, state_directory / "sync.log",
                           hour, minute, path_environment)
@@ -429,7 +431,7 @@ def show_status(settings, config_path):
     message("print_info", "配置文件：" + str(config_path))
     print(json.dumps(settings, ensure_ascii=False, indent=2))
     print("调度：" + scheduler.status(settings["platform"]))
-    print("bisync 已初始化：" + ("是" if (pair / "initialized.json").exists() else "否"))
+    print("同步方式：拉取其他设备 → Rime 合并并导出 → 上传本机 " + settings["installation_id"] + " 目录")
     for name in ("daily.json", "last-run.json"):
         if (pair / name).exists():
             print(name + ": " + json.dumps(read_json(pair / name), ensure_ascii=False))
@@ -444,7 +446,7 @@ def main(argv=None):
     parser.add_argument("action", nargs="?", choices=("setup", "run", "resync", "status", "remove"), default="setup")
     parser.add_argument("--config", type=Path, default=default_config_path(), help="本机 JSON 配置文件")
     parser.add_argument("--scheduled", action="store_true", help="按每日成功记录去重；供定时任务使用")
-    parser.add_argument("--yes", action="store_true", help="确认手动 resync")
+    parser.add_argument("--yes", action="store_true", help=argparse.SUPPRESS)
     arguments = parser.parse_args(argv)
     COMMON, RUNNER = arguments.common.absolute(), arguments.runner.absolute()
     config_path = arguments.config.expanduser().absolute()
@@ -464,18 +466,15 @@ def main(argv=None):
             if arguments.action == "status":
                 show_status(settings, config_path)
             else:
-                resync = arguments.action == "resync"
-                if resync and not arguments.yes:
-                    message("print_warning", "resync 会重新建立两端基线；同路径冲突使用较新的文件。")
-                    if not confirm("确认重新初始化并同步？"):
-                        raise SyncError("已取消。")
-                run_workflow(settings, scheduled=arguments.scheduled, resync=resync)
+                if arguments.action == "resync":
+                    message("print_warning", "当前按设备目录单向复制，无需重建基线；resync 按普通 run 执行。")
+                run_workflow(settings, scheduled=arguments.scheduled)
         return 0
     except (SyncError, OSError, RuntimeError, ValueError) as error:
         message("print_error", str(error))
         return 1
     except KeyboardInterrupt:
-        message("print_warning", "操作已中断；下次任务不会自动 resync。")
+        message("print_warning", "操作已中断；下次可重新运行以继续复制。")
         return 130
 
 

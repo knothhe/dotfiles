@@ -4,10 +4,9 @@
 任务，Linux 安装当前用户的 cron 任务；不需要 sudo。
 
 ```bash
-rime_sync_cloud setup       # 选择参数、初始化并安装定时任务
+rime_sync_cloud setup       # 选择参数、执行一次同步并安装定时任务
 rime_sync_cloud run         # 立即执行一次，不受每日去重限制
 rime_sync_cloud status      # 查看配置、定时任务和最近运行结果
-rime_sync_cloud resync      # 明确确认后重建 bisync 基线
 rime_sync_cloud remove      # 移除自己的定时任务，保留词库和配置
 ```
 
@@ -15,33 +14,43 @@ rime_sync_cloud remove      # 移除自己的定时任务，保留词库和配�
 
 每次完整运行依次执行：
 
-1. `rime_sync`：合并本地同步目录里已有的其他设备快照，再写出本机快照。
-2. `rclone bisync`：将本地同步目录与 R2 远程目录双向同步。
-3. `rime_sync`：合并刚从远端拉回的其他设备快照。
+1. `rclone copy`：从远端拉取其他设备目录，排除本机 `/<installation_id>/**`。
+2. `rime_sync`：合并刚拉回的其他设备快照，再导出本机用户词库。
+3. `rclone copy`：仅将本机 `<sync_dir>/<installation_id>/` 上传到远端同名目录。
 
-本轮上传运行前的本机新增词条，并让其他设备已经上传的词条在本机生效。
-第三步产生的本机合并快照留到下次 bisync 上传；其他设备的原始快照已经在同步目录中。
-脚本复用 Rime 的合并逻辑，不自行解析或合并词条。
+本轮就会上传合并后的本机快照；每轮只执行一次本地 Rime 同步。
+脚本复用 Rime 的合并逻辑，不自行解析或合并词条，也不假设各设备使用相同词库或文件名。
+传输以整个设备目录为单位，包含其中所有未排除的文件和子目录。
 
 `installation_id` 是 Rime 的设备标识，例如 `lara`，不是脚本自动推断的系统名。
 每台设备必须使用不同标识。Rime 将本机快照写到
 `<sync_dir>/<installation_id>/`，并读取其他设备的快照。
+
+例如，`lara` 只上传 `lara/`、拉取 `roxy/` 等其他目录；`roxy` 只上传 `roxy/`、
+拉取 `lara/` 等其他目录。设备名从本机配置读取，脚本不会写死示例中的设备名。
+本机目录以本地为准，其他设备目录以远端为准；本机缓存中的其他设备快照不会反向上传。
+
+两次传输都使用 [`copy`](https://rclone.org/commands/rclone_copy/)，更新变化文件但保留目标端多出的文件。
+删除本地文件不会自动删除云端文件，云端退役设备目录也不会自动从本地移除；需要明确清理。
 
 ## 依赖和默认值
 
 通用依赖：
 
 - Bash、Python 3.9 或更新版本。
-- 支持 `bisync`、`--resync-mode`、`--recover`、`--resilient` 和
-  `--max-lock` 的 rclone。
+- 支持 `copy` 的 rclone。
 - 已配置的 rclone remote。R2 的账号和密钥由 `rclone config` 管理，
   本脚本只保存 rclone 配置文件路径。
 - 本仓库的 `rime_sync` 和 `common_functions.sh`。
 
 向导会先用定时任务的受限环境，非交互检查 rclone 配置能否读取。
-初始化和日常运行均不继承交互 shell 中的 `RCLONE_*`、`AWS_*` 等临时凭据变量。
+配置和日常运行均不继承交互 shell 中的 `RCLONE_*`、`AWS_*` 等临时凭据变量。
 如果加密配置依赖临时的 `RCLONE_CONFIG_PASS` 或 `RCLONE_PASSWORD_COMMAND`，
 向导会拒绝安装任务；请先配置后台可用的凭据方式。脚本不会将解密密码写入任务 JSON。
+
+Cloudflare R2 使用只有对象读写权限的 token 时，需在对应 rclone remote 的配置中
+设置 `no_check_bucket = true`，避免上传时尝试 `CreateBucket` 而返回 403。
+参见 [Cloudflare 的 rclone 配置说明](https://developers.cloudflare.com/r2/examples/rclone/)。
 
 macOS 使用鼠须管自带的 `rime_dict_manager`、`pgrep`、`open` 和 `launchctl`。
 Linux 使用 `rime_dict_manager`、`fcitx5-remote`、`fcitx5`、`pgrep` 和 `crontab`；
@@ -59,7 +68,7 @@ Linux 还需要发行版提供的 cron 服务处于运行状态。
 
 确认前会展示参数。修改本地同步目录或设备标识时，向导同步更新
 `installation.yaml`，确保 Rime 和 rclone 使用相同目录。
-本机任务配置、rclone 凭据和 bisync 状态不得放入同步目录。
+本机任务配置、rclone 凭据和运行状态不得放入同步目录。
 
 ## 调度与补跑
 
@@ -82,25 +91,37 @@ Linux 的任务只更新 `# BEGIN rime_sync_cloud` 到 `# END rime_sync_cloud`
 之间的区块，保留其他 cron 条目。macOS 的 label 为
 `io.github.knothhe.rime-sync-cloud`。
 
-## 初始化与恢复
+## 升级与恢复
 
-首次 `setup` 明确初始化，使用：
+脚本更新后使用 `chezmoi apply` 应用到本机。可以直接运行它更新全部托管配置，
+也可以只应用 Rime 云同步及其依赖：
 
 ```bash
-rclone bisync "$sync_dir" "$remote" \
-  --config "$rclone_config" --ask-password=false \
-  --workdir "$local_state_dir" \
-  --exclude '.DS_Store' --resilient --recover --max-lock 2m \
-  --resync --resync-mode newer -v
+chezmoi apply \
+  ~/.local/xbin/rime_sync_cloud \
+  ~/.local/xbin/rime_sync_cloud.py \
+  ~/.local/xbin/rime_sync_cloud_scheduler.py \
+  ~/.local/xbin/rime_sync \
+  ~/.local/xbin/common_functions.sh
 ```
 
-初始化合并两端的文件集合。同路径冲突使用较新的文件，不保证保留冲突的两份内容。
-正常运行省略 `--resync --resync-mode newer`，避免重建基线掩盖同步错误。
-不要把 `--resync` 放入每天运行的命令中。
+这里使用实际目标路径。只应用 `~/.local/xbin/rime_sync_cloud` 会更新 Bash 启动脚本，
+不会更新相邻的 Python 实现。应用后，已有每日任务下次运行就会使用新脚本，
+无需重新 `setup`；需要立即同步时再执行 `rime_sync_cloud run`。
+`chezmoi apply` 本身只负责应用这些脚本，不会执行词库云同步。
 
-日常失败不会自动追加 `--resync`。如首次初始化未成功、状态目录丢失，
-或 bisync 明确要求重建状态，检查日志后运行 `rime_sync_cloud resync`。
-更换同名 remote 背后的账户或存储位置后也应明确重新初始化。
+从旧 bisync 版本升级后，已有配置和每日任务可以继续使用，直接执行
+`rime_sync_cloud run` 即可，无需重建基线。
+旧 `bisync/` 状态和 `RCLONE_TEST` 标记会保留；新流程不读取这些状态，
+拉取时排除根目录的 `RCLONE_TEST`，也不会创建或更新该标记。
+兼容旧命令 `resync`（包括 `resync --yes`），按普通 `run` 执行并提示同步方式已改变。
+
+网络失败后重新执行 `run`，或等待下一次定时重试即可。
+只有拉取、本地合并和上传三个步骤都成功后，才记录当天成功。
+
+重装系统并复用原 `installation_id` 时，应先备份并恢复云端该设备目录中的快照，
+让 Rime 完成词库恢复后再启用日常上传。日常拉取始终排除本机目录，
+不会自动从云端恢复本机快照，也不会通过文件时间决定本机与云端的优先级。
 
 ## 配置和日志位置
 
@@ -109,7 +130,8 @@ rclone bisync "$sync_dir" "$remote" \
 - 日志：状态目录下的 `sync.log`
 - macOS 定时配置：`~/Library/LaunchAgents/io.github.knothhe.rime-sync-cloud.plist`
 
-各设备维护独立的 bisync 状态，状态目录不参与云同步。
+每日成功和最近运行结果保存在 `runs/<本机任务标识>/`；标识包含设备名、同步路径和 remote。
+状态目录不参与云同步。
 可用 `--config /absolute/path/config.json` 指定其他配置文件；
 一台机器默认只安装一份此命令管理的每日任务。
 

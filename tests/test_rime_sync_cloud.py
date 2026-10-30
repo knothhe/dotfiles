@@ -1,4 +1,4 @@
-"""Regression tests for Rime cloud sync without external commands or services.
+"""Rime cloud workflow regressions; integration tests use local-only rclone remotes.
 
 Run: python3 -B -m unittest discover -s tests -v
 """
@@ -9,8 +9,10 @@ import datetime
 import fcntl
 import io
 import json
+import os
 from pathlib import Path
 import plistlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -47,6 +49,7 @@ class WorkflowTests(unittest.TestCase):
         self.state = self.root / "local state"
         self.user.mkdir()
         self.sync.mkdir()
+        (self.sync / "lara").mkdir()
         self.rclone_config = self.root / "rclone.conf"
         self.rclone_config.write_text("[app-sync]\ntype = s3\n", encoding="utf-8")
         self.settings = {
@@ -94,9 +97,8 @@ class WorkflowTests(unittest.TestCase):
         return cloud.state_paths(self.settings)[1]
 
     def initialized(self):
-        pair = self.pair()
-        pair.mkdir(parents=True, exist_ok=True)
-        (pair / "initialized.json").write_text('{"created_at": "earlier"}\n', encoding="utf-8")
+        # Only local scheduling records are needed; no transfer baseline exists.
+        self.pair().mkdir(parents=True, exist_ok=True)
 
     def actions(self):
         return [call.args[0] for call in self.commands.call_args_list]
@@ -104,68 +106,111 @@ class WorkflowTests(unittest.TestCase):
     def assert_no_daily_success(self):
         self.assertFalse((self.pair() / "daily.json").exists())
 
-    def test_normal_workflow_is_rime_bisync_rime(self):
-        self.initialized()
+    def test_normal_workflow_pulls_others_merges_once_then_uploads_own_directory(self):
         self.assertTrue(cloud.run_workflow(self.settings))
         actions = self.actions()
-        self.assertEqual(actions[0], [self.settings["rime_sync"]])
-        self.assertEqual(actions[1][:4], [
-            self.settings["rclone"], "bisync", str(self.sync), self.settings["remote"]])
-        self.assertEqual(actions[2], [self.settings["rime_sync"]])
         self.assertEqual(len(actions), 3)
-        self.assertNotIn("--resync", actions[1])
-        self.assertEqual(actions[1][actions[1].index("--exclude") + 1], ".DS_Store")
-        self.assertIn("--recover", actions[1])
+        self.assertEqual(actions[0][:4], [
+            self.settings["rclone"], "copy", self.settings["remote"], str(self.sync)])
+        self.assertEqual(actions[1], [self.settings["rime_sync"]])
+        self.assertEqual(actions[2][:4], [
+            self.settings["rclone"], "copy", str(self.sync / "lara"),
+            self.settings["remote"] + "/lara"])
+        exclusions = [actions[0][index + 1] for index, item in enumerate(actions[0])
+                      if item == "--exclude"]
+        self.assertIn("/lara/**", exclusions)
+        self.assertIn(".DS_Store", exclusions)
+        self.assertIn("/RCLONE_TEST", exclusions)
+        for arguments in (actions[0], actions[2]):
+            self.assertEqual(arguments[arguments.index("--config") + 1], str(self.rclone_config))
+            self.assertIn("--ask-password=false", arguments)
+            for flag in ("--resync", "--force", "--check-access", "--update", "--ignore-existing"):
+                self.assertNotIn(flag, arguments)
         self.assertEqual(cloud.read_json(self.pair() / "daily.json")["date"], NOW.date().isoformat())
         environment = self.commands.call_args_list[0].args[1]
         self.assertEqual(environment["RIME_USER_DIR"], str(self.user))
         self.external.assert_not_called()
 
-    def test_missing_baseline_never_triggers_automatic_resync(self):
-        with self.assertRaisesRegex(cloud.SyncError, "resync"):
-            cloud.run_workflow(self.settings)
-        self.commands.assert_not_called()
-        self.assert_no_daily_success()
-
-    def test_explicit_initial_resync_is_used_once(self):
-        self.assertTrue(cloud.run_workflow(self.settings, resync=True))
-        first = self.actions()
-        self.assertEqual(len(first), 3)
-        self.assertEqual(first[1].count("--resync"), 1)
-        self.assertEqual(first[1][first[1].index("--resync-mode") + 1], "newer")
-        self.assertTrue((self.pair() / "initialized.json").exists())
-        self.commands.reset_mock()
+    def test_run_works_without_bisync_baseline_or_access_marker(self):
+        self.assertFalse(self.pair().exists())
         self.assertTrue(cloud.run_workflow(self.settings))
-        self.assertNotIn("--resync", self.actions()[1])
-
-    def test_bisync_failure_does_not_create_baseline_or_daily_success(self):
-        self.commands.side_effect = ["", cloud.SyncError("bisync failure")]
-        with self.assertRaisesRegex(cloud.SyncError, "bisync failure"):
-            cloud.run_workflow(self.settings, resync=True)
-        self.assertEqual(self.commands.call_count, 2)
         self.assertFalse((self.pair() / "initialized.json").exists())
+        self.assertFalse((self.sync / "RCLONE_TEST").exists())
+        self.assertEqual(self.commands.call_count, 3)
+
+    def test_existing_bisync_files_and_access_marker_are_not_rewritten(self):
+        old_baseline = self.state / "bisync/legacy-pair/initialized.json"
+        old_baseline.parent.mkdir(parents=True)
+        old_baseline.write_text('{"created_at": "earlier"}\n', encoding="utf-8")
+        marker = self.sync / "RCLONE_TEST"
+        marker.write_text("legacy marker\n", encoding="utf-8")
+        os.utime(marker, ns=(1_600_000_000_000_000_000, 1_600_000_000_000_000_000))
+        before = marker.stat().st_mtime_ns
+        self.assertTrue(cloud.run_workflow(self.settings))
+        self.assertEqual(old_baseline.read_text(), '{"created_at": "earlier"}\n')
+        self.assertEqual(marker.read_text(), "legacy marker\n")
+        self.assertEqual(marker.stat().st_mtime_ns, before)
+
+    def test_device_name_selects_pull_exclusion_and_upload_directory_dynamically(self):
+        device = "desktop.work-2"
+        self.settings["installation_id"] = device
+        self.write_installation(installation_id=device)
+        (self.sync / device).mkdir()
+        self.assertTrue(cloud.run_workflow(self.settings))
+        pull, _, upload = self.actions()
+        self.assertIn("/" + device + "/**", pull)
+        self.assertNotIn("/lara/**", pull)
+        self.assertEqual(upload[2], str(self.sync / device))
+        self.assertEqual(upload[3], self.settings["remote"] + "/" + device)
+
+    def test_remote_trailing_slash_does_not_change_owned_upload_scope(self):
+        self.settings["remote"] += "/"
+        self.assertTrue(cloud.run_workflow(self.settings))
+        self.assertEqual(self.actions()[2][3], "app-sync:app-sync/rime/lara")
+
+    def test_pull_failure_prevents_native_merge_and_upload(self):
+        self.commands.side_effect = cloud.SyncError("pull failed")
+        with self.assertRaisesRegex(cloud.SyncError, "pull failed"):
+            cloud.run_workflow(self.settings)
+        self.assertEqual(self.commands.call_count, 1)
         self.assert_no_daily_success()
         self.assertFalse(cloud.read_json(self.pair() / "last-run.json")["success"])
 
-    def test_final_merge_failure_retains_baseline_and_can_retry_without_resync(self):
-        self.commands.side_effect = ["", "", cloud.SyncError("final merge failure")]
-        with self.assertRaisesRegex(cloud.SyncError, "final merge failure"):
-            cloud.run_workflow(self.settings, resync=True)
-        self.assertTrue((self.pair() / "initialized.json").exists())
+    def test_native_merge_failure_prevents_upload(self):
+        self.commands.side_effect = ["", cloud.SyncError("merge failed")]
+        with self.assertRaisesRegex(cloud.SyncError, "merge failed"):
+            cloud.run_workflow(self.settings)
+        self.assertEqual(self.commands.call_count, 2)
+        self.assert_no_daily_success()
+
+    def test_upload_failure_does_not_mark_daily_success_and_can_retry(self):
+        self.commands.side_effect = ["", "", cloud.SyncError("upload failed")]
+        with self.assertRaisesRegex(cloud.SyncError, "upload failed"):
+            cloud.run_workflow(self.settings)
+        self.assertEqual(self.commands.call_count, 3)
         self.assert_no_daily_success()
         self.assertFalse(cloud.read_json(self.pair() / "last-run.json")["success"])
         self.commands.reset_mock()
         self.commands.side_effect = None
         self.commands.return_value = ""
         self.assertTrue(cloud.run_workflow(self.settings))
-        self.assertNotIn("--resync", self.actions()[1])
+        self.assertEqual(self.commands.call_count, 3)
 
-    def test_first_merge_failure_never_runs_bisync(self):
-        self.initialized()
-        self.commands.side_effect = cloud.SyncError("first merge failure")
-        with self.assertRaisesRegex(cloud.SyncError, "first merge failure"):
+    def test_missing_owned_directory_after_merge_stops_before_upload(self):
+        (self.sync / "lara").rmdir()
+        with self.assertRaises(cloud.SyncError):
             cloud.run_workflow(self.settings)
-        self.assertEqual(self.commands.call_count, 1)
+        self.assertEqual(self.commands.call_count, 2)
+        self.assert_no_daily_success()
+
+    def test_owned_directory_symlink_is_rejected_before_upload(self):
+        (self.sync / "lara").rmdir()
+        unrelated = self.root / "unrelated directory"
+        unrelated.mkdir()
+        (self.sync / "lara").symlink_to(unrelated, target_is_directory=True)
+        with self.assertRaises(cloud.SyncError):
+            cloud.run_workflow(self.settings)
+        self.assertEqual(self.commands.call_count, 2)
         self.assert_no_daily_success()
 
     def test_scheduled_run_skips_before_daily_time(self):
@@ -215,7 +260,8 @@ class WorkflowTests(unittest.TestCase):
         self.settings["remote"] = remote
         self.initialized()
         self.assertTrue(cloud.run_workflow(self.settings))
-        self.assertEqual(self.actions()[1][3], remote)
+        self.assertEqual(self.actions()[0][2], remote)
+        self.assertEqual(self.actions()[2][3], remote + "/lara")
         self.assertFalse(marker.exists())
         self.external.assert_not_called()
 
@@ -297,16 +343,32 @@ class WorkflowTests(unittest.TestCase):
     def test_rclone_credentials_inside_sync_tree_are_rejected(self):
         self.settings["rclone_config"] = str(self.sync / "rclone.conf")
         with self.assertRaisesRegex(cloud.SyncError, "凭据"):
-            cloud.run_workflow(self.settings, resync=True)
+            cloud.run_workflow(self.settings)
         self.commands.assert_not_called()
         self.assert_no_daily_success()
 
-    def test_changing_rclone_config_uses_a_different_bisync_pair(self):
+    def test_changing_rclone_config_uses_different_scheduling_records(self):
         original_state, original_pair = cloud.state_paths(self.settings)
         self.settings["rclone_config"] = str(self.root / "other-account/rclone.conf")
         changed_state, changed_pair = cloud.state_paths(self.settings)
         self.assertEqual(original_state, changed_state)
         self.assertNotEqual(original_pair, changed_pair)
+
+    def test_changing_device_name_uses_different_scheduling_records(self):
+        original_state, original_pair = cloud.state_paths(self.settings)
+        self.settings["installation_id"] = "roxy"
+        changed_state, changed_pair = cloud.state_paths(self.settings)
+        self.assertEqual(original_state, changed_state)
+        self.assertNotEqual(original_pair, changed_pair)
+        self.assertEqual(changed_pair.parent, changed_state / "runs")
+
+    def test_resync_compatibility_alias_runs_without_confirmation(self):
+        config = self.root / "config.json"
+        config.write_text(json.dumps(self.settings), encoding="utf-8")
+        with mock.patch.object(cloud, "confirm", side_effect=AssertionError("No resync confirmation")), \
+                mock.patch.object(cloud, "run_workflow", return_value=True) as workflow:
+            self.assertEqual(cloud.main(["resync", "--yes", "--config", str(config)]), 0)
+        workflow.assert_called_once_with(self.settings, scheduled=False)
 
     def test_valid_json_non_objects_are_rejected(self):
         path = self.root / "non-object.json"
@@ -324,8 +386,6 @@ class WorkflowTests(unittest.TestCase):
                 return str(self.rclone_config)
             if arguments[1] == "listremotes":
                 return "app-sync:"
-            if arguments[1:3] == ["bisync", "--help"]:
-                return "--resync-mode --recover --resilient --max-lock"
             self.fail("Unexpected setup command: " + repr(arguments))
 
         def prompt(label, default, *validation):
@@ -416,8 +476,6 @@ class WorkflowTests(unittest.TestCase):
                 return "Configuration file is stored at:\n" + str(self.rclone_config)
             if arguments[1] == "listremotes":
                 return "app-sync:"
-            if arguments[1:3] == ["bisync", "--help"]:
-                return "--resync-mode --recover --resilient --max-lock"
             self.fail("Unexpected setup command: " + repr(arguments))
 
         with mock.patch.object(cloud.Path, "home", return_value=home), \
@@ -451,10 +509,94 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(settings["environment"]["XDG_CACHE_HOME"], str(home / ".cache"))
         self.assertNotIn("RCLONE_CONFIG_PASS", settings["environment"])
         self.assertEqual(prompts[0][1], str(default_user))
-        workflow.assert_called_once_with(settings, resync=True, lock_held=True)
+        workflow.assert_called_once_with(settings, lock_held=True)
         self.assertEqual(install.call_args.args[0], "linux")
         self.assertEqual(install.call_args.args[4:6], (3, 0))
         self.external.assert_not_called()
+
+
+@unittest.skipUnless(shutil.which("rclone"), "rclone is not installed")
+class DirectionalCopyIntegrationTests(unittest.TestCase):
+    def test_device_ownership_preserves_arbitrary_filenames_and_nested_snapshots(self):
+        # The configured alias remote and native merge stub only access fixtures.
+        for device, peer, own_name, peer_name in (
+                ("lara", "roxy", "custom lexicon.userdb.txt", "terra_pinyin.userdb.txt"),
+                ("roxy", "lara", "wubi86.userdb.txt", "another schema.userdb.txt")):
+            with self.subTest(device=device), tempfile.TemporaryDirectory(
+                    prefix="rime-directional-copy-") as temporary:
+                root = Path(temporary).resolve()
+                local, remote = root / "local snapshots", root / "remote snapshots/rime"
+                user, state = root / "Rime user", root / "local state"
+                for directory in (local / device, local / peer, remote / device,
+                                  remote / peer, user):
+                    directory.mkdir(parents=True, exist_ok=True)
+                config = root / "rclone.conf"
+                config.write_text("[fixture]\ntype = alias\nremote = " +
+                                  str(remote.parent) + "\n", encoding="utf-8")
+                settings = {
+                    "version": 1, "platform": cloud.platform_name(),
+                    "rime_user_dir": str(user), "sync_dir": str(local),
+                    "installation_id": device, "remote": "fixture:rime", "daily_time": "03:00",
+                    "rclone": shutil.which("rclone"), "rclone_config": str(config),
+                    "rime_sync": str(root / "native-sync-stub"), "state_dir": str(state),
+                    "environment": {"PATH": "/usr/bin:/bin"},
+                }
+                (user / "installation.yaml").write_text(
+                    "installation_id: " + json.dumps(device) + "\nsync_dir: " +
+                    json.dumps(str(local)) + "\n", encoding="utf-8")
+                own = local / device / own_name
+                own.write_text("local owner before merge\n", encoding="utf-8")
+                (remote / device / own_name).write_text("remote owner's stale copy\n", encoding="utf-8")
+                os.utime(remote / device / own_name, (1_900_000_000, 1_900_000_000))
+                remote_only = remote / device / "remote-only-old-schema.userdb.txt"
+                remote_only.write_text("preserve remote-only file\n", encoding="utf-8")
+                (local / peer / peer_name).write_text("local peer's stale cache\n", encoding="utf-8")
+                os.utime(local / peer / peer_name, (1_900_000_000, 1_900_000_000))
+                peer_content = "authoritative peer snapshot\n"
+                (remote / peer / peer_name).write_text(peer_content, encoding="utf-8")
+                nested = Path("nested data/extra-dictionary.bin")
+                (remote / peer / nested).parent.mkdir()
+                (remote / peer / nested).write_bytes(b"\x00peer binary snapshot\xff")
+                (local / device / nested).parent.mkdir()
+                (local / device / nested).write_bytes(b"\x00owner binary snapshot\xff")
+                (local / peer / "local-only-old-schema.txt").write_text("preserve local-only file\n")
+                (local / "unpublished-device").mkdir()
+                (local / "unpublished-device/cache.txt").write_text("never publish another device cache\n")
+                (remote / ".DS_Store").write_text("ignore remote metadata\n")
+                (local / device / ".DS_Store").write_text("ignore owner metadata\n")
+                (remote / "RCLONE_TEST").write_text("legacy marker\n")
+                native_calls = []
+                real_command = cloud.command
+
+                def command(arguments, environment, description, capture=False):
+                    if arguments == [settings["rime_sync"]]:
+                        native_calls.append(arguments)
+                        self.assertEqual(own.read_text(), "local owner before merge\n")
+                        self.assertFalse((local / device / remote_only.name).exists())
+                        self.assertEqual((local / peer / peer_name).read_text(), peer_content)
+                        self.assertEqual((local / peer / nested).read_bytes(), b"\x00peer binary snapshot\xff")
+                        own.write_text("owner merged with peer\n" + peer_content, encoding="utf-8")
+                        return ""
+                    return real_command(arguments, environment, description, capture=capture)
+
+                with mock.patch.object(cloud, "command", side_effect=command), \
+                        mock.patch.object(cloud, "message"), \
+                        mock.patch.object(cloud, "require_dependencies"), \
+                        mock.patch.object(cloud, "ensure_directory", side_effect=lambda path:
+                                          Path(path).mkdir(parents=True, exist_ok=True)):
+                    self.assertTrue(cloud.run_workflow(settings))
+                self.assertEqual(len(native_calls), 1)
+                self.assertEqual((remote / device / own_name).read_bytes(), own.read_bytes())
+                self.assertEqual((remote / device / nested).read_bytes(), b"\x00owner binary snapshot\xff")
+                self.assertEqual((remote / peer / peer_name).read_text(), peer_content)
+                self.assertTrue((local / peer / "local-only-old-schema.txt").is_file())
+                self.assertTrue(remote_only.is_file())
+                self.assertFalse((remote / "unpublished-device").exists())
+                self.assertFalse((remote / device / ".DS_Store").exists())
+                self.assertFalse((local / ".DS_Store").exists())
+                self.assertFalse((local / "RCLONE_TEST").exists())
+                self.assertFalse((state / "bisync").exists())
+                self.assertTrue(cloud.read_json(cloud.state_paths(settings)[1] / "last-run.json")["success"])
 
 
 class SchedulerTests(unittest.TestCase):
