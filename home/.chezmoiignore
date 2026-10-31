@@ -30,4 +30,5 @@
 .config/xshrc/tmpl
 .ssh/config
 .config/opencode/opencode.json
+.config/rclone/rclone.conf
 {{end}}

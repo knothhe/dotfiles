@@ -1,0 +1,8 @@
+[app-sync]
+type = s3
+endpoint = {{ pass "guanglai/app_sync/s3_api_endpoint" }}
+access_key_id = {{ pass "guanglai/app_sync/access_key_id" }}
+secret_access_key = {{ pass "guanglai/app_sync/secret_access_key" }}
+provider = Cloudflare
+no_check_bucket = true
+
