@@ -1,0 +1,18 @@
+{{- /* chezmoi:modify-template */ -}}
+{{- /* Manage only [tui] status line keys; keep everything else Codex writes at runtime. */ -}}
+{{- $want := dict "status_line" (list "model-with-reasoning" "project-name" "permissions" "approval-mode" "context-used" "context-window-size" "weekly-limit") "status_line_use_colors" true -}}
+{{- $cfg := dict -}}
+{{- if .chezmoi.stdin | trim -}}
+{{-   $cfg = fromToml .chezmoi.stdin -}}
+{{- end -}}
+{{- $tui := get $cfg "tui" | default dict -}}
+{{- $same := true -}}
+{{- range $k, $v := $want -}}
+{{-   if ne (toJson (get $tui $k)) (toJson $v) -}}{{- $same = false -}}{{- end -}}
+{{- end -}}
+{{- if and (.chezmoi.stdin | trim) $same -}}
+{{-   .chezmoi.stdin -}}
+{{- else -}}
+{{-   range $k, $v := $want -}}{{- $cfg = setValueAtPath (list "tui" $k) $v $cfg -}}{{- end -}}
+{{-   toToml $cfg }}
+{{ end -}}

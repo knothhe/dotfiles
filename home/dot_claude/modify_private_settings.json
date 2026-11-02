@@ -1,0 +1,12 @@
+{{- /* chezmoi:modify-template */ -}}
+{{- /* Manage only the statusLine key; keep everything else Claude Code writes at runtime. */ -}}
+{{- $want := dict "type" "command" "command" "~/.claude/statusline.sh" "padding" 0 -}}
+{{- $cfg := dict -}}
+{{- if .chezmoi.stdin | trim -}}
+{{-   $cfg = fromJson .chezmoi.stdin -}}
+{{- end -}}
+{{- if and (.chezmoi.stdin | trim) (eq (toJson (get $cfg "statusLine")) (toJson $want)) -}}
+{{-   .chezmoi.stdin -}}
+{{- else -}}
+{{-   toPrettyJson "  " (setValueAtPath "statusLine" $want $cfg) }}
+{{ end -}}
