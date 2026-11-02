@@ -1,6 +1,9 @@
 # alias
 alias trm='trash'
 alias cmt='opencode run --command commit'
+# AI agents
+alias cc='claude --dangerously-skip-permissions'
+alias co='codex --yolo'
 # tmux
 export TMUX_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/tmux/tmux.conf"
 alias tmux='tmux -f "$TMUX_CONFIG"'
