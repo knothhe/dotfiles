@@ -3,3 +3,4 @@
 .config/xshrc/proxy
 .local/xbin/x_sync
 .local/xbin/x_pic
+.claude/config.json
